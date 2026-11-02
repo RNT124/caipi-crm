@@ -59,6 +59,10 @@ button{font:inherit;cursor:pointer}
 .view{display:none}.view.active{display:block}
 #toast-msg{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;padding:10px 20px;border-radius:20px;font-size:14px;font-weight:500;z-index:9999;transition:opacity .3s;pointer-events:none;max-width:90vw;text-align:center;opacity:0}
 .talla-btn{min-width:56px}
+.oculto{display:none!important}
+.badge-ok{background:var(--green-light);color:var(--green)}
+.falta{color:var(--coral);font-weight:700}
+.sobra{color:var(--sea);font-weight:700}
 </style>
 </head>
 <body>
@@ -83,6 +87,8 @@ button{font:inherit;cursor:pointer}
   </div>
   <div class="tabs">
     <div class="tab active" id="tab-registro" onclick="irTab('registro')">🔴 Registro</div>
+    <div class="tab" id="tab-comprar" onclick="irTab('comprar')">🛒 Por comprar</div>
+    <div class="tab" id="tab-compras" onclick="irTab('compras')">🧾 Compras</div>
     <div class="tab" id="tab-catalogo" onclick="irTab('catalogo')">👙 Catálogo</div>
     <div class="tab" id="tab-clientas" onclick="irTab('clientas')">👩 Clientas</div>
   </div>
@@ -112,6 +118,33 @@ button{font:inherit;cursor:pointer}
         <button class="btn btn-primary btn-block" onclick="agregarItem()">+ Agregar</button>
         <div id="r-items" style="margin-top:14px"></div>
       </div>
+    </div>
+
+    <!-- POR COMPRAR -->
+    <div class="view" id="view-comprar">
+      <input id="pc-buscar" type="text" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="🔍 Celular, usuario o modelo" oninput="filtrar('view-comprar', this.value)" class="mb8">
+      <div id="pc-lista"></div>
+    </div>
+
+    <!-- COMPRAS -->
+    <div class="view" id="view-compras">
+      <div class="card">
+        <div class="card-title">Registrar compra</div>
+        <input id="c-fecha" type="date" class="mb8">
+        <input id="c-prod" list="r-prod-list" placeholder="Modelo" oninput="compraProdCambio()" onchange="compraProdCambio()" autocomplete="off" class="mb8">
+        <div class="row mb8" id="c-tallas"></div>
+        <div id="c-colores" class="pill-row mb8"></div>
+        <input id="c-color" placeholder="Color / estampado" class="mb8" autocomplete="off">
+        <div class="row mb8">
+          <input id="c-cant" type="number" inputmode="numeric" min="1" placeholder="Cantidad" style="flex:1">
+          <input id="c-costo" type="number" inputmode="decimal" placeholder="Costo S/ c/u" style="flex:1">
+        </div>
+        <button class="btn btn-block mb8" onclick="agregarLineaCompra()">+ Agregar línea</button>
+        <div id="c-lineas" class="mb8"></div>
+        <button class="btn btn-primary btn-block" onclick="guardarCompra()">💾 Guardar compra</button>
+      </div>
+      <input id="c-buscar" type="text" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="🔍 Buscar compra por modelo, color o fecha" oninput="filtrar('view-compras', this.value)" class="mb8">
+      <div id="c-lista"></div>
     </div>
 
     <!-- CATÁLOGO -->
@@ -211,13 +244,15 @@ function doLogout(){
 }
 
 // ═════════ NAVEGACIÓN ═════════
-const TABS = ['registro','catalogo','clientas'];
+const TABS = ['registro','comprar','compras','catalogo','clientas'];
 function irTab(t){
   TABS.forEach(k=>{
     document.getElementById('tab-'+k).classList.toggle('active', k===t);
     document.getElementById('view-'+k).classList.toggle('active', k===t);
   });
   if(t==='registro'){ renderCanales(); renderTallas(); cargarProductos(); }
+  if(t==='comprar') loadComprar();
+  if(t==='compras') loadCompras();
   if(t==='catalogo') loadCatalogo();
   if(t==='clientas') loadClientas();
 }
@@ -356,10 +391,11 @@ async function renderItemsClienta(){
   try {
     const ped = await pedidoAbierto(cliente);
     if(!ped){ box.innerHTML = '<div class="hint">Aún no tiene sets en su pedido.</div>'; return; }
-    const items = await dbGet(`items?pedido_id=eq.${ped.id}&order=creado_en.asc`);
+    await calcularAsignacion().catch(()=>{});
+    const items = asig.lista.filter(i=>i.pedido_id===ped.id);
     const total = items.reduce((a,i)=>a+Number(i.precio_venta)*i.cantidad,0);
     box.innerHTML = '<div class="card-title">Llevando ahora</div>' +
-      items.map(i=>`<div class="line"><span>${i.cantidad}× ${esc(i.producto)}${i.variante?' · '+esc(i.variante):''} <span class="badge badge-info">${esc(i.canal)}</span></span>
+      items.map(i=>`<div class="line"><span>${i.cantidad}× ${esc(i.producto)}${i.variante?' · '+esc(i.variante):''} <span class="badge badge-info">${esc(i.canal)}</span> ${badgeItem(i)}</span>
         <span class="row">${soles(i.precio_venta*i.cantidad)} <button class="btn btn-xs" onclick="editarPrecio('${i.id}',${Number(i.precio_venta)})">✏️</button><button class="btn btn-xs" onclick="eliminarItem('${i.id}')">✕</button></span></div>`).join('') +
       `<div style="text-align:right;font-weight:600;margin-top:8px">Total: ${soles(total)}</div>`;
   } catch(e){ box.innerHTML = '<div class="hint" style="color:var(--red)">Error cargando</div>'; }
@@ -398,6 +434,7 @@ async function agregarItem(){
     document.getElementById('r-cant').value='1';
     talla=''; renderTallas();
     toast('✓ Agregado');
+    await sincronizarEstados();
     await renderItemsClienta();
     cargarProductos();
   } catch(e){ toast('Error: '+e.message); }
@@ -415,8 +452,250 @@ async function eliminarItem(id){
     await dbDelete(`items?id=eq.${id}`);
     const resto = await dbGet(`items?pedido_id=eq.${it[0].pedido_id}&select=id&limit=1`);
     if(!resto.length) await dbDelete(`pedidos?id=eq.${it[0].pedido_id}`);
+    await sincronizarEstados();
     await renderItemsClienta();
   } catch(e){ toast('Error: '+e.message); }
+}
+
+// ═════════ FIFO: compra más antigua → venta más antigua ═════════
+let asig = { items:{}, stock:{}, compras:[], lista:[] };
+async function calcularAsignacion(){
+  const [items, compras] = await Promise.all([
+    dbGet('items?select=*&order=creado_en.asc&limit=20000'),
+    dbGet('compras?select=*&order=fecha.asc,creado_en.asc&limit=20000')
+  ]);
+  const stock = {}, lotes = {};
+  const ini = (k,n,v)=>{ if(!stock[k]) stock[k] = { nombre:n, variante:v||'', vendidas:0, compradas:0, falta:0, sobra:0 }; };
+  compras.forEach(c=>{
+    const k = clave(c.producto, c.variante); ini(k, c.producto, c.variante);
+    stock[k].compradas += c.cantidad;
+    (lotes[k] = lotes[k]||[]).push({ q:c.cantidad, costo:Number(c.costo)||0 });
+  });
+  const asigItems = {};
+  items.forEach(i=>{
+    const k = clave(i.producto, i.variante); ini(k, i.producto, i.variante);
+    stock[k].vendidas += i.cantidad;
+    let need = i.cantidad, cub = 0, costoTot = 0;
+    for(const l of (lotes[k]||[])){ if(need<=0) break; if(l.q<=0) continue; const t = Math.min(l.q, need); l.q -= t; need -= t; cub += t; costoTot += t*l.costo; }
+    asigItems[i.id] = { cubierto:cub, costo:costoTot };
+  });
+  Object.values(stock).forEach(s=>{ s.falta = Math.max(0, s.vendidas-s.compradas); s.sobra = Math.max(0, s.compradas-s.vendidas); });
+  asig = { items:asigItems, stock, compras, lista:items };
+  return asig;
+}
+function estadoItem(i){
+  const cub = (asig.items[i.id]||{}).cubierto || 0;
+  if(cub>=i.cantidad) return 'completo';
+  return cub>0 ? 'parcial' : 'pendiente';
+}
+function badgeItem(i){
+  const e = estadoItem(i), cub = (asig.items[i.id]||{}).cubierto || 0;
+  if(e==='completo') return '<span class="badge badge-ok">✓ comprado</span>';
+  if(e==='parcial') return `<span class="badge badge-warn">${cub}/${i.cantidad} comprado</span>`;
+  return '<span class="badge">⏳ por comprar</span>';
+}
+// Los pedidos pasan solos entre "por_comprar" y "comprado"
+async function sincronizarEstados(){
+  try {
+    await calcularAsignacion();
+    const peds = await dbGet('pedidos?estado=in.(por_comprar,comprado)&select=id,estado&limit=10000');
+    const cambios = [];
+    peds.forEach(p=>{
+      const its = asig.lista.filter(i=>i.pedido_id===p.id);
+      if(!its.length) return;
+      const todo = its.every(i=>estadoItem(i)==='completo');
+      if(todo && p.estado==='por_comprar') cambios.push(dbPatch(`pedidos?id=eq.${p.id}`, { estado:'comprado' }));
+      if(!todo && p.estado==='comprado') cambios.push(dbPatch(`pedidos?id=eq.${p.id}`, { estado:'por_comprar' }));
+    });
+    await Promise.all(cambios);
+  } catch(e){ console.error('sincronizar', e); }
+}
+
+// ═════════ FILTRO GENÉRICO (data-q en filas .fil-row, grupos .fil-grp) ═════════
+function filtrar(viewId, v){
+  const view = document.getElementById(viewId); if(!view) return;
+  const toks = norm(v).split(' ').filter(Boolean).map(t=>/^[\d+\-()]+$/.test(t)?normTel(t):t).filter(Boolean);
+  view.querySelectorAll('.fil-row').forEach(el=>el.classList.toggle('oculto', !toks.every(t=>(el.dataset.q||'').includes(t))));
+  view.querySelectorAll('.fil-grp').forEach(g=>{
+    const rows = g.querySelectorAll('.fil-row');
+    g.classList.toggle('oculto', rows.length>0 && [...rows].every(r=>r.classList.contains('oculto')));
+  });
+}
+function copiar(txt){
+  navigator.clipboard.writeText(txt).then(()=>toast('✓ Copiado')).catch(()=>{ prompt('Copia el texto:', txt); });
+}
+function fechaHoy(){ const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function fechaCorta(f){ const [y,m,d] = String(f).split('-'); return d+'/'+m+'/'+y; }
+
+// ═════════ COMPRAS ═════════
+let cTalla = '';
+let lineasCompra = [];
+function setCTalla(t){ cTalla = t; renderCTallas(); ponerUltimoCosto(); }
+function renderCTallas(){
+  document.getElementById('c-tallas').innerHTML = '<span class="hint" style="margin-right:4px">Talla</span>' +
+    TALLAS.map(t=>`<button type="button" class="btn talla-btn ${t===cTalla?'btn-primary':''}" onclick="setCTalla('${t}')">${t}</button>`).join('');
+}
+function cProdActual(){
+  const n = norm(document.getElementById('c-prod').value);
+  return n ? (productos.find(p=>norm(p.nombre)===n) || null) : null;
+}
+function compraProdCambio(){
+  const p = cProdActual();
+  const box = document.getElementById('c-colores');
+  if(!p){ box.innerHTML=''; return; }
+  box.innerHTML = coloresDe(p).map(c=>`<button type="button" class="btn btn-xs" data-c="${esc(c)}" onclick="document.getElementById('c-color').value=this.dataset.c;ponerUltimoCosto()">${esc(c)}</button>`).join('');
+  ponerUltimoCosto();
+}
+// sugiere el último costo registrado para ese set (solo dato real ya registrado)
+function ponerUltimoCosto(){
+  const inp = document.getElementById('c-costo'); if(inp.value) return;
+  const prod = limpio(document.getElementById('c-prod').value); if(!prod) return;
+  const k = clave(prod, variante(cTalla, document.getElementById('c-color').value));
+  const kp = norm(prod);
+  const cs = asig.compras.filter(c=>clave(c.producto,c.variante)===k);
+  const cp = cs.length ? cs : asig.compras.filter(c=>norm(c.producto)===kp);
+  if(cp.length) inp.value = cp[cp.length-1].costo;
+}
+function limpiarFormCompra(){
+  ['c-prod','c-color','c-cant','c-costo'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('c-colores').innerHTML='';
+  cTalla=''; renderCTallas();
+}
+function agregarLineaCompra(silencio){
+  const prodTxt = limpio(document.getElementById('c-prod').value);
+  const color = limpio(document.getElementById('c-color').value);
+  const cant = parseInt(document.getElementById('c-cant').value);
+  const costo = parseFloat(String(document.getElementById('c-costo').value).replace(',','.'));
+  if(!prodTxt){ toast('Escribe el modelo'); return false; }
+  if(!cTalla){ toast('Elige la talla S o M'); return false; }
+  if(!color){ toast('Escribe el color o estampado'); return false; }
+  if(!cant || cant<1){ toast('Pon la cantidad'); return false; }
+  if(isNaN(costo) || costo<0){ toast('Pon el costo en S/'); return false; }
+  const p0 = cProdActual();
+  const nombre = p0 ? p0.nombre : prodTxt;
+  const colExist = coloresDe(p0).find(c=>norm(c)===norm(color));
+  lineasCompra.push({ producto:nombre, variante:variante(cTalla, colExist||color), cantidad:cant, costo });
+  limpiarFormCompra(); renderLineasCompra();
+  return true;
+}
+function quitarLineaCompra(n){ lineasCompra.splice(n,1); renderLineasCompra(); }
+function renderLineasCompra(){
+  const box = document.getElementById('c-lineas');
+  if(!lineasCompra.length){ box.innerHTML=''; return; }
+  const tot = lineasCompra.reduce((a,l)=>a+l.cantidad*l.costo,0);
+  box.innerHTML = lineasCompra.map((l,n)=>`<div class="line"><span>${l.cantidad}× ${esc(l.producto)} · ${esc(l.variante)} <span class="hint">${soles(l.costo)} c/u</span></span><button class="btn btn-xs" onclick="quitarLineaCompra(${n})">✕</button></div>`).join('') +
+    `<div style="text-align:right;font-weight:600;margin-top:6px">Total: ${soles(tot)}</div>`;
+}
+async function guardarCompra(){
+  // si quedó una línea escrita sin agregar, se agrega
+  if(limpio(document.getElementById('c-prod').value)){ if(!agregarLineaCompra()) return; }
+  if(!lineasCompra.length){ toast('Agrega al menos una línea'); return; }
+  const fecha = document.getElementById('c-fecha').value || fechaHoy();
+  try {
+    await dbPost('compras', lineasCompra.map(l=>({ fecha, ...l })));
+    for(const l of lineasCompra){
+      const ex = productos.find(p=>norm(p.nombre)===norm(l.producto));
+      try {
+        if(!ex) await dbPost('productos', { nombre:l.producto, precio_venta:PRECIO_SET, variantes:[l.variante] });
+        else if(!(ex.variantes||[]).some(v=>norm(v)===norm(l.variante))) await dbPatch(`productos?id=eq.${ex.id}`, { variantes:[...(ex.variantes||[]), l.variante] });
+      } catch(e){ console.error(e); }
+      await cargarProductos();
+    }
+    toast(`✓ Compra guardada (${lineasCompra.length} línea${lineasCompra.length!==1?'s':''})`);
+    lineasCompra = []; renderLineasCompra();
+    await sincronizarEstados();
+    loadCompras();
+  } catch(e){ toast('Error: '+e.message); }
+}
+async function loadCompras(){
+  renderCTallas();
+  if(!document.getElementById('c-fecha').value) document.getElementById('c-fecha').value = fechaHoy();
+  const box = document.getElementById('c-lista');
+  box.innerHTML = '<div class="hint">Cargando…</div>';
+  try {
+    await Promise.all([calcularAsignacion(), cargarProductos()]);
+    const cs = asig.compras.slice().reverse();
+    if(!cs.length){ box.innerHTML = '<div class="card hint" style="text-align:center">Aún no registraste compras</div>'; return; }
+    const porDia = {};
+    cs.forEach(c=>{ (porDia[c.fecha] = porDia[c.fecha]||[]).push(c); });
+    box.innerHTML = Object.keys(porDia).sort().reverse().map(f=>{
+      const lin = porDia[f]; const tot = lin.reduce((a,c)=>a+c.cantidad*Number(c.costo),0);
+      return `<div class="card fil-grp"><div class="line" style="font-weight:600"><span>📅 ${fechaCorta(f)}</span><span>${soles(tot)}</span></div>
+        ${lin.map(c=>`<div class="line fil-row" data-q="${esc(norm(c.producto+' '+(c.variante||'')+' '+f+' '+fechaCorta(f)))}"><span>${c.cantidad}× ${esc(c.producto)} · ${esc(c.variante||'')} <span class="hint">${soles(c.costo)} c/u</span></span>
+          <span class="row"><button class="btn btn-xs" onclick="editarCompra('${c.id}')">✏️</button><button class="btn btn-xs" onclick="borrarCompra('${c.id}')">🗑</button></span></div>`).join('')}</div>`;
+    }).join('');
+    filtrar('view-compras', document.getElementById('c-buscar').value);
+  } catch(e){ box.innerHTML = '<div class="hint" style="color:var(--red)">Error: '+esc(e.message)+'</div>'; }
+}
+async function editarCompra(id){
+  const c = asig.compras.find(x=>x.id===id); if(!c) return;
+  const q = prompt(`Cantidad de ${c.producto} · ${c.variante||''}:`, c.cantidad); if(q===null) return;
+  const p = prompt('Costo por set en S/:', c.costo); if(p===null) return;
+  const qn = parseInt(q), pn = parseFloat(String(p).replace(',','.'));
+  if(!qn || qn<1 || isNaN(pn) || pn<0){ toast('Datos inválidos'); return; }
+  try { await dbPatch(`compras?id=eq.${id}`, { cantidad:qn, costo:pn }); toast('✓ Compra actualizada'); await sincronizarEstados(); loadCompras(); } catch(e){ toast('Error: '+e.message); }
+}
+async function borrarCompra(id){
+  const c = asig.compras.find(x=>x.id===id); if(!c) return;
+  if(!confirm(`¿Borrar ${c.cantidad}× ${c.producto} · ${c.variante||''}? Los pedidos que dependían de esa compra vuelven a "Por comprar".`)) return;
+  try { await dbDelete(`compras?id=eq.${id}`); toast('✓ Compra borrada'); await sincronizarEstados(); loadCompras(); } catch(e){ toast('Error: '+e.message); }
+}
+// desde Por comprar: abre Compras con el set ya cargado
+function comprarDesde(kEnc){
+  const s = asig.stock[decodeURIComponent(kEnc)]; if(!s) return;
+  irTab('compras');
+  const [t, ...resto] = String(s.variante).split('/');
+  document.getElementById('c-prod').value = s.nombre;
+  document.getElementById('c-color').value = limpio(resto.join('/'));
+  document.getElementById('c-cant').value = s.falta || 1;
+  document.getElementById('c-costo').value = '';
+  cTalla = TALLAS.includes(limpio(t)) ? limpio(t) : '';
+  renderCTallas(); compraProdCambio();
+  document.getElementById('c-cant').focus();
+}
+
+// ═════════ POR COMPRAR ═════════
+async function loadComprar(){
+  const box = document.getElementById('pc-lista');
+  box.innerHTML = '<div class="hint">Cargando…</div>';
+  try {
+    await sincronizarEstados();
+    const entradas = Object.entries(asig.stock);
+    const faltas = entradas.filter(([k,s])=>s.falta>0);
+    const sobras = entradas.filter(([k,s])=>s.sobra>0);
+    // clientas esperando cada set
+    const pend = asig.lista.filter(i=>estadoItem(i)!=='completo');
+    const pedIds = [...new Set(pend.map(i=>i.pedido_id))];
+    const peds = pedIds.length ? await dbGet(`pedidos?id=in.(${pedIds.join(',')})&select=id,cliente_id`) : [];
+    const cliIds = [...new Set(peds.map(p=>p.cliente_id).filter(Boolean))];
+    const clis = cliIds.length ? await dbGet(`clientes?id=in.(${cliIds.join(',')})&select=id,nombre,telefono,usuario_wa`) : [];
+    const cliDe = {}; peds.forEach(p=>{ cliDe[p.id] = clis.find(c=>c.id===p.cliente_id) || {}; });
+    const esperan = {}, busca = {};
+    pend.forEach(i=>{
+      const k = clave(i.producto, i.variante), c = cliDe[i.pedido_id] || {};
+      const n = c.nombre || c.usuario_wa || 'Sin nombre';
+      const u = i.cantidad - ((asig.items[i.id]||{}).cubierto||0);
+      (esperan[k] = esperan[k]||{}); esperan[k][n] = (esperan[k][n]||0) + u;
+      busca[k] = (busca[k]||'') + ' ' + [c.nombre, c.telefono, c.usuario_wa].join(' ');
+    });
+    const sobraHtml = sobras.length ? `<div class="card fil-grp"><div class="card-title">📦 Stock sobrante (comprado sin clienta)</div>` +
+      sobras.map(([k,s])=>`<div class="line fil-row" data-q="${esc(norm(s.nombre+' '+s.variante))}"><span>${esc(s.nombre)} · ${esc(s.variante)}</span><span class="sobra">${s.sobra}</span></div>`).join('') + '</div>' : '';
+    if(!faltas.length){ box.innerHTML = '<div class="card" style="text-align:center">✅ No falta comprar nada</div>' + sobraHtml; filtrar('view-comprar', document.getElementById('pc-buscar').value); return; }
+    const porProd = {};
+    faltas.forEach(([k,s])=>{ const pk = norm(s.nombre); if(!porProd[pk]) porProd[pk] = { nombre:s.nombre, qty:0, vars:[] }; porProd[pk].qty += s.falta; porProd[pk].vars.push({k,s}); });
+    const grupos = Object.values(porProd).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    grupos.forEach(g=>g.vars.sort((a,b)=>a.s.variante.localeCompare(b.s.variante)));
+    const total = faltas.reduce((a,[k,s])=>a+s.falta,0);
+    const texto = 'Lista de compras CAIPI:\n' + grupos.map(g=>`• ${g.nombre}: ${g.vars.map(v=>v.s.variante+' ×'+v.s.falta).join(', ')}`).join('\n') + `\nTotal: ${total} sets`;
+    box.innerHTML = `<div class="card"><div class="line" style="border:none"><span>Faltan <strong>${total}</strong> set(s) en <strong>${grupos.length}</strong> modelo(s)</span>
+      <button class="btn btn-sm btn-primary" data-t="${esc(texto)}" onclick="copiar(this.dataset.t)">📋 Copiar lista</button></div></div>` +
+      grupos.map(g=>`<div class="card fil-grp"><div style="font-weight:600;font-size:15px">${esc(g.nombre)} <span class="falta">— comprar ${g.qty}</span></div>
+        ${g.vars.map(({k,s})=>`<div class="line fil-row" data-q="${esc(norm(g.nombre+' '+s.variante+' '+(busca[k]||'')))}"><div style="flex:1;min-width:0">
+          <div><strong>${esc(s.variante)}</strong> · <span class="falta">faltan ${s.falta}</span> <span class="hint">(vendidas ${s.vendidas} · compradas ${s.compradas})</span></div>
+          <div class="hint">${Object.entries(esperan[k]||{}).map(([n,q])=>esc(n)+' ('+q+')').join(', ')}</div></div>
+          <button class="btn btn-xs btn-primary" onclick="comprarDesde('${encodeURIComponent(k)}')">✓ Compré</button></div>`).join('')}</div>`).join('') + sobraHtml;
+    filtrar('view-comprar', document.getElementById('pc-buscar').value);
+  } catch(e){ box.innerHTML = '<div class="hint" style="color:var(--red)">Error: '+esc(e.message)+'</div>'; }
 }
 
 // ═════════ CATÁLOGO ═════════
@@ -424,19 +703,21 @@ async function loadCatalogo(){
   const box = document.getElementById('cat-lista');
   box.innerHTML = '<div class="hint">Cargando…</div>';
   try {
-    const [prods, items] = await Promise.all([
-      dbGet('productos?order=nombre.asc&limit=1000'),
-      dbGet('items?select=producto,variante,cantidad&limit=10000')
-    ]);
+    const [prods] = await Promise.all([ dbGet('productos?order=nombre.asc&limit=1000'), calcularAsignacion() ]);
     productos = prods;
-    const vend = {};
-    items.forEach(i=>{ const k = clave(i.producto, i.variante); vend[k] = (vend[k]||0) + i.cantidad; });
-    if(!prods.length){ box.innerHTML = '<div class="hint">Aún no hay modelos. Se crean solos al registrar la primera venta.</div>'; return; }
+    if(!prods.length){ box.innerHTML = '<div class="hint">Aún no hay modelos. Se crean solos al registrar la primera venta o compra.</div>'; return; }
+    const vacio = { vendidas:0, compradas:0, falta:0, sobra:0 };
     box.innerHTML = prods.map(p=>{
-      const vars = (Array.isArray(p.variantes)?p.variantes:[]).slice().sort();
-      const tot = vars.reduce((a,v)=>a+(vend[clave(p.nombre,v)]||0),0);
+      const pk = norm(p.nombre);
+      const keys = new Map();
+      (Array.isArray(p.variantes)?p.variantes:[]).forEach(v=>keys.set(clave(p.nombre,v), v));
+      Object.entries(asig.stock).forEach(([k,s])=>{ if(norm(s.nombre)===pk && !keys.has(k)) keys.set(k, s.variante); });
+      const lin = [...keys.entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+      const tot = lin.reduce((a,[k])=>a+((asig.stock[k]||vacio).vendidas),0);
       return `<div class="line"><div style="flex:1;min-width:0"><strong>${esc(p.nombre)}</strong> · ${soles(p.precio_venta)} <span class="hint">· ${tot} vendidos</span>
-        ${vars.map(v=>`<div class="hint" style="margin-top:2px">${esc(v)} → ${vend[clave(p.nombre,v)]||0}</div>`).join('')}</div>
+        ${lin.map(([k,v])=>{ const s = asig.stock[k]||vacio;
+          const est = s.falta>0 ? `<span class="falta">faltan ${s.falta}</span>` : s.sobra>0 ? `<span class="sobra">sobran ${s.sobra}</span>` : (s.vendidas||s.compradas ? '<span style="color:var(--green)">✓</span>' : '');
+          return `<div class="hint" style="margin-top:2px">${esc(v)} → vendidas ${s.vendidas} · compradas ${s.compradas} ${est}</div>`; }).join('')}</div>
         <div class="row"><button class="btn btn-xs" onclick="editarProducto('${p.id}')">✏️</button><button class="btn btn-xs" onclick="borrarProducto('${p.id}')">🗑</button></div></div>`;
     }).join('');
   } catch(e){ box.innerHTML = '<div class="hint" style="color:var(--red)">Error cargando</div>'; }
@@ -452,7 +733,10 @@ async function editarProducto(id){
   try {
     await dbPatch(`productos?id=eq.${id}`, { nombre:nuevo, precio_venta:pr });
     // si cambió el nombre, se actualiza también en las ventas para que el cruce siga coincidiendo
-    if(nuevo!==p.nombre) await dbPatch(`items?producto=eq.${encodeURIComponent(p.nombre)}`, { producto:nuevo });
+    if(nuevo!==p.nombre) await Promise.all([
+      dbPatch(`items?producto=eq.${encodeURIComponent(p.nombre)}`, { producto:nuevo }),
+      dbPatch(`compras?producto=eq.${encodeURIComponent(p.nombre)}`, { producto:nuevo })
+    ]);
     toast('✓ Modelo actualizado'); loadCatalogo();
   } catch(e){ toast('Error: '+e.message); }
 }
