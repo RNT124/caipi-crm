@@ -66,6 +66,14 @@ button{font:inherit;cursor:pointer}
 .lbl{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px}
 .badge-coral{background:var(--coral-light);color:var(--coral-dark)}
 .btn-no{background:var(--red);color:#fff;border-color:var(--red)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow)}
+.kpi .k{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
+.kpi .v{font-size:19px;font-weight:700;margin-top:4px}
+.kpi .s{font-size:11.5px;color:var(--text3);margin-top:2px}
+.kpi.click{cursor:pointer}.kpi.act{border-color:var(--primary);background:var(--primary-light)}
+.kpi.big{grid-column:1/-1}
+.bar{height:6px;border-radius:3px;background:var(--coral-light);margin-top:4px;overflow:hidden}.bar>div{height:100%;background:var(--primary)}
 .sep{font-size:12px;font-weight:700;color:var(--text2);margin:12px 0 6px}
 .badge-ok{background:var(--green-light);color:var(--green)}
 .falta{color:var(--coral);font-weight:700}
@@ -115,6 +123,7 @@ button{font:inherit;cursor:pointer}
     <div class="tab" id="tab-armado" onclick="irTab('armado')">🧰 Armado Lima</div>
     <div class="tab" id="tab-envios" onclick="irTab('envios')">🚚 Envíos</div>
     <div class="tab" id="tab-datos" onclick="irTab('datos')">📝 Datos</div>
+    <div class="tab" id="tab-resumen" onclick="irTab('resumen')">📊 Resumen</div>
     <div class="tab" id="tab-catalogo" onclick="irTab('catalogo')">👙 Catálogo</div>
     <div class="tab" id="tab-clientas" onclick="irTab('clientas')">👩 Clientas</div>
   </div>
@@ -196,6 +205,22 @@ button{font:inherit;cursor:pointer}
     <div class="view" id="view-datos">
       <input id="da-buscar" type="text" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="🔍 Celular, usuario o nombre" oninput="filtrar('view-datos', this.value)" class="mb8">
       <div id="da-lista"></div>
+    </div>
+
+    <!-- RESUMEN -->
+    <div class="view" id="view-resumen">
+      <div id="rs-chips" class="pill-row mb8"></div>
+      <div id="rs-cards" class="grid2"></div>
+      <div class="card" id="rs-det" style="display:none"></div>
+      <div id="rs-resto"></div>
+      <div class="card">
+        <div class="card-title">💸 Registrar gasto real</div>
+        <input type="hidden" id="g-id">
+        <div class="row mb8"><input id="g-fecha" type="date" style="flex:1"><select id="g-tipo" style="flex:1"></select></div>
+        <div class="row mb8"><input id="g-monto" type="number" inputmode="decimal" placeholder="Monto S/" style="flex:1"><input id="g-nota" placeholder="Nota (opcional)" style="flex:2"></div>
+        <button class="btn btn-primary btn-block" id="g-btn" onclick="guardarGasto()">💾 Guardar gasto</button>
+        <div id="g-lista" class="mt8"></div>
+      </div>
     </div>
 
     <!-- CATÁLOGO -->
@@ -321,6 +346,7 @@ function entrar(u){
   document.getElementById('login-page').style.display='none';
   document.getElementById('app-page').style.display='block';
   document.getElementById('u-nombre').textContent = currentUser.nombre;
+  document.getElementById('tab-resumen').style.display = currentUser.rol==='admin' ? '' : 'none';
   irTab('registro');
 }
 function doLogout(){
@@ -332,7 +358,7 @@ function doLogout(){
 }
 
 // ═════════ NAVEGACIÓN ═════════
-const TABS = ['registro','comprar','compras','pedidos','armado','envios','datos','catalogo','clientas'];
+const TABS = ['registro','comprar','compras','pedidos','armado','envios','datos','resumen','catalogo','clientas'];
 function irTab(t){
   TABS.forEach(k=>{
     document.getElementById('tab-'+k).classList.toggle('active', k===t);
@@ -345,6 +371,7 @@ function irTab(t){
   if(t==='armado') loadArmado();
   if(t==='envios') loadEnvios();
   if(t==='datos') loadDatos();
+  if(t==='resumen'){ if(!currentUser || currentUser.rol!=='admin'){ irTab('registro'); return; } loadResumen(); }
   tabActual = t;
   if(t==='catalogo') loadCatalogo();
   if(t==='clientas') loadClientas();
@@ -1229,6 +1256,145 @@ function renderEnvios(){
 }
 function enSel(){ return [...document.querySelectorAll('.en-sel:checked')].map(x=>x.value); }
 function enSelTodos(t){ document.querySelectorAll('.en-sel').forEach(x=>{ x.checked = !!t && x.dataset.t===t; }); }
+
+// ═════════ RESUMEN Y GASTOS ═════════
+const TIPOS_GASTO = ['Envío Brasil→Lima','Impuestos / aduana','Flete local','Otro'];
+let rsPeriodo = 'todo', rsAbierto = '', rsDet = {}, gastos = [];
+function inicioPeriodo(p){
+  const d = new Date(); d.setHours(0,0,0,0);
+  if(p==='mes'){ d.setDate(1); return d; }
+  if(p==='semana'){ const dia = d.getDay(); d.setDate(d.getDate() - (dia===0 ? 6 : dia-1)); return d; }
+  return null;
+}
+function fechaLocal(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function topHtml(filas, fmt){
+  if(!filas.length) return '<div class="hint">Sin datos en este periodo.</div>';
+  const max = Math.max(...filas.map(f=>Math.abs(f.v))) || 1;
+  return filas.map((f,n)=>`<div style="padding:6px 0;border-bottom:1px solid var(--border)"><div class="row" style="justify-content:space-between;font-size:13px"><span>${n+1}. ${esc(f.t)}</span><strong>${fmt(f.v)}</strong></div>${f.s?`<div class="hint">${f.s}</div>`:''}<div class="bar"><div style="width:${Math.max(2,Math.abs(f.v)/max*100)}%"></div></div></div>`).join('');
+}
+async function loadResumen(){
+  const cards = document.getElementById('rs-cards');
+  document.getElementById('rs-chips').innerHTML = [['todo','Todo'],['mes','Este mes'],['semana','Esta semana']]
+    .map(([k,t])=>`<button type="button" class="btn btn-sm ${rsPeriodo===k?'btn-primary':''}" onclick="rsPeriodo='${k}';rsAbierto='';loadResumen()">${t}</button>`).join('');
+  document.getElementById('g-tipo').innerHTML = TIPOS_GASTO.map(t=>`<option>${t}</option>`).join('');
+  if(!document.getElementById('g-fecha').value) document.getElementById('g-fecha').value = fechaHoy();
+  cards.innerHTML = '<div class="hint">Cargando…</div>';
+  try {
+    const [, peds, clis, gs] = await Promise.all([
+      calcularAsignacion(),
+      dbGet('pedidos?select=id,cliente_id,pagado,estado&limit=10000'),
+      dbGet('clientes?select=id,nombre,telefono,usuario_wa&limit=10000'),
+      dbGet('gastos?order=fecha.desc,creado_en.desc&limit=5000')
+    ]);
+    gastos = gs;
+    const ini = inicioPeriodo(rsPeriodo), iniF = ini ? fechaLocal(ini) : '';
+    const pedDe = {}; peds.forEach(p=>pedDe[p.id] = p);
+    const cliDe = {}; clis.forEach(c=>cliDe[c.id] = c);
+    const items = asig.lista.filter(i=>!ini || new Date(i.creado_en) >= ini);
+    const compras = asig.compras.filter(c=>!iniF || c.fecha >= iniF);
+    const gastosP = gastos.filter(g=>!iniF || g.fecha >= iniF);
+    // ventas
+    let vendido = 0, sets = 0, brutaIngreso = 0, brutaCosto = 0, setsSinCosto = 0;
+    const pedSet = new Set(), cliSet = new Set(), porProd = {}, porCli = {}, porCanal = {};
+    items.forEach(i=>{
+      const v = Number(i.precio_venta)*i.cantidad, a = asig.items[i.id] || { cubierto:0, costo:0 };
+      vendido += v; sets += i.cantidad;
+      pedSet.add(i.pedido_id);
+      const ped = pedDe[i.pedido_id]; const cid = ped && ped.cliente_id; if(cid) cliSet.add(cid);
+      brutaIngreso += Number(i.precio_venta)*a.cubierto; brutaCosto += a.costo; setsSinCosto += i.cantidad - a.cubierto;
+      const pk = norm(i.producto);
+      const pr = porProd[pk] = porProd[pk] || { t:i.producto, sets:0, vendido:0, ingCub:0, costo:0 };
+      pr.sets += i.cantidad; pr.vendido += v; pr.ingCub += Number(i.precio_venta)*a.cubierto; pr.costo += a.costo;
+      if(cid){ const pc = porCli[cid] = porCli[cid] || { c:cliDe[cid]||{}, v:0, sets:0 }; pc.v += v; pc.sets += i.cantidad; }
+      const ca = i.canal || 'Sin canal'; const pca = porCanal[ca] = porCanal[ca] || { v:0, sets:0 }; pca.v += v; pca.sets += i.cantidad;
+    });
+    const bruta = brutaIngreso - brutaCosto;
+    const invertido = compras.reduce((a,c)=>a+c.cantidad*Number(c.costo),0);
+    const totGastos = gastosP.reduce((a,g)=>a+Number(g.monto),0);
+    const referencial = bruta - totGastos;
+    const ticket = pedSet.size ? vendido/pedSet.size : 0;
+    // por cobrar y faltan comprar: situación actual (no dependen del periodo)
+    const totPed = {}; asig.lista.forEach(i=>{ totPed[i.pedido_id] = (totPed[i.pedido_id]||0) + Number(i.precio_venta)*i.cantidad; });
+    const sinPagar = peds.filter(p=>!p.pagado && totPed[p.id]);
+    const porCobrar = sinPagar.reduce((a,p)=>a+totPed[p.id],0);
+    const faltan = Object.values(asig.stock).reduce((a,s)=>a+s.falta,0);
+    // detalle por tarjeta
+    rsDet = {};
+    rsDet.cobrar = `<div class="card-title">Pedidos sin "Pagó" (${sinPagar.length})</div>` + (sinPagar.length ? sinPagar.map(p=>{ const c = cliDe[p.cliente_id]||{}; return `<div class="line"><span>${esc(nombreCli(c))} <span class="hint">${c.telefono?'· '+esc(c.telefono):''} · ${ESTADOS[p.estado]||''}</span></span><strong>${soles(totPed[p.id])}</strong></div>`; }).join('') : '<div class="hint">Todo pagado ✅</div>');
+    rsDet.faltan = `<div class="card-title">Faltan comprar</div><div class="hint mb8">${faltan} set(s) vendidos aún sin compra registrada.</div><button class="btn btn-sm btn-primary" onclick="irTab('comprar')">🛒 Ir a Por comprar</button>`;
+    const comPorDia = {}; compras.forEach(c=>{ comPorDia[c.fecha] = (comPorDia[c.fecha]||0) + c.cantidad*Number(c.costo); });
+    rsDet.invertido = `<div class="card-title">Compras por día</div>` + (Object.keys(comPorDia).length ? Object.keys(comPorDia).sort().reverse().map(f=>`<div class="line"><span>📅 ${fechaCorta(f)}</span><strong>${soles(comPorDia[f])}</strong></div>`).join('') : '<div class="hint">Sin compras en este periodo.</div>');
+    rsDet.bruta = `<div class="card-title">Cómo se calcula</div><div style="font-size:13px">Venta de sets ya comprados: <strong>${soles(brutaIngreso)}</strong><br>− Costo real de esos sets (FIFO): <strong>${soles(brutaCosto)}</strong><br>= <strong>${soles(bruta)}</strong></div>`+
+      (setsSinCosto ? `<div class="hint mt8">${setsSinCosto} set(s) vendidos aún no tienen compra: no entran hasta registrar su costo real.</div>` : '');
+    rsDet.ref = `<div class="card-title">Ganancia referencial</div><div style="font-size:13px">Ganancia bruta ${soles(bruta)} − gastos registrados ${soles(totGastos)} = <strong>${soles(referencial)}</strong></div><div class="hint mt8">Solo usa datos reales que registraste.</div>`;
+    const gasPorTipo = {}; gastosP.forEach(g=>{ gasPorTipo[g.tipo] = (gasPorTipo[g.tipo]||0) + Number(g.monto); });
+    rsDet.gastos = `<div class="card-title">Gastos por tipo</div>` + (Object.keys(gasPorTipo).length ? Object.entries(gasPorTipo).sort((a,b)=>b[1]-a[1]).map(([t,v])=>`<div class="line"><span>${esc(t)}</span><strong>${soles(v)}</strong></div>`).join('') : '<div class="hint">Sin gastos en este periodo.</div>');
+    const kpi = (k,t,v,s,cls)=>`<div class="kpi ${rsDet[k]?'click':''} ${cls||''} ${k && rsAbierto===k?'act':''}" ${rsDet[k]?`onclick="rsAbrir('${k}')"`:''}><div class="k">${t}</div><div class="v">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`;
+    cards.innerHTML =
+      kpi('ref','Ganancia referencial', soles(referencial), 'bruta − gastos', 'big') +
+      kpi('','Clientas', cliSet.size, sets+' sets vendidos') +
+      kpi('','Vendido', soles(vendido), pedSet.size+' pedido(s)') +
+      kpi('','Ticket promedio', soles(ticket), 'por pedido') +
+      kpi('invertido','Invertido', soles(invertido), 'compras registradas') +
+      kpi('cobrar','Por cobrar', soles(porCobrar), sinPagar.length+' pedido(s) · hoy') +
+      kpi('faltan','Faltan comprar', faltan+' sets', 'hoy') +
+      kpi('gastos','Gastos', soles(totGastos), gastosP.length+' registro(s)') +
+      kpi('bruta','Ganancia bruta', soles(bruta), setsSinCosto?setsSinCosto+' set(s) sin costo aún':'con costo real');
+    // tops
+    const prods = Object.values(porProd);
+    const costoTot = prods.reduce((a,p)=>a+p.costo,0);
+    prods.forEach(p=>{ p.bruta = p.ingCub - p.costo; p.gastoAsig = costoTot ? totGastos*p.costo/costoTot : 0; p.neta = p.bruta - p.gastoAsig; });
+    const topV = prods.slice().sort((a,b)=>b.sets-a.sets).slice(0,10).map(p=>({ t:p.t, v:p.sets, s:soles(p.vendido) }));
+    const topG = prods.filter(p=>p.costo>0).sort((a,b)=>b.neta-a.neta).slice(0,10).map(p=>({ t:p.t, v:p.neta, s:`bruta ${soles(p.bruta)} − gastos ${soles(p.gastoAsig)}` }));
+    const topC = Object.values(porCli).sort((a,b)=>b.v-a.v).slice(0,10).map(x=>({ t:nombreCli(x.c), v:x.v, s:x.sets+' set(s)'+(x.c.telefono?' · '+x.c.telefono:'') }));
+    const canales = Object.entries(porCanal).sort((a,b)=>b[1].v-a[1].v).map(([t,x])=>({ t, v:x.v, s:x.sets+' set(s) · '+(vendido?Math.round(x.v/vendido*100):0)+'%' }));
+    document.getElementById('rs-resto').innerHTML =
+      `<div class="card"><div class="card-title">🏆 Top 10 modelos más vendidos</div>${topHtml(topV, v=>v+' sets')}</div>` +
+      `<div class="card"><div class="card-title">💰 Top 10 modelos con más ganancia (después de gastos)</div>${topHtml(topG, soles)}<div class="hint mt8">Los gastos se reparten entre modelos según lo que costó cada uno.</div></div>` +
+      `<div class="card"><div class="card-title">👩 Top 10 clientas</div>${topHtml(topC, soles)}</div>` +
+      `<div class="card"><div class="card-title">📣 Ventas por canal</div>${topHtml(canales, soles)}</div>`;
+    renderGastos(gastosP);
+    rsMostrarDet();
+  } catch(e){ cards.innerHTML = '<div class="hint" style="color:var(--red)">Error: '+esc(e.message)+'</div>'; }
+}
+function rsAbrir(k){ rsAbierto = rsAbierto===k ? '' : k; document.querySelectorAll('#rs-cards .kpi').forEach(el=>el.classList.toggle('act', el.getAttribute('onclick')===`rsAbrir('${rsAbierto}')`)); rsMostrarDet(); }
+function rsMostrarDet(){
+  const det = document.getElementById('rs-det');
+  if(!rsAbierto || !rsDet[rsAbierto]){ det.style.display = 'none'; return; }
+  det.innerHTML = rsDet[rsAbierto]; det.style.display = '';
+}
+function renderGastos(gs){
+  const box = document.getElementById('g-lista');
+  box.innerHTML = !gs.length ? '<div class="hint">Sin gastos en este periodo.</div>' :
+    gs.map(g=>`<div class="line"><span>📅 ${fechaCorta(g.fecha)} · ${esc(g.tipo)}${g.nota?' <span class="hint">· '+esc(g.nota)+'</span>':''}</span>
+      <span class="row"><strong>${soles(g.monto)}</strong><button class="btn btn-xs" onclick="editarGasto('${g.id}')">✏️</button><button class="btn btn-xs" onclick="borrarGasto('${g.id}')">🗑</button></span></div>`).join('');
+}
+function limpiarGasto(){
+  document.getElementById('g-id').value = ''; document.getElementById('g-monto').value = ''; document.getElementById('g-nota').value = '';
+  document.getElementById('g-fecha').value = fechaHoy(); document.getElementById('g-btn').textContent = '💾 Guardar gasto';
+}
+function editarGasto(id){
+  const g = gastos.find(x=>x.id===id); if(!g) return;
+  document.getElementById('g-id').value = g.id; document.getElementById('g-fecha').value = g.fecha;
+  document.getElementById('g-tipo').value = g.tipo; document.getElementById('g-monto').value = g.monto;
+  document.getElementById('g-nota').value = g.nota||''; document.getElementById('g-btn').textContent = '💾 Guardar cambios';
+  document.getElementById('g-monto').focus();
+}
+async function guardarGasto(){
+  const id = document.getElementById('g-id').value;
+  const monto = parseFloat(String(document.getElementById('g-monto').value).replace(',','.'));
+  if(!monto || monto<=0){ toast('Escribe el monto en S/'); return; }
+  const d = { fecha: document.getElementById('g-fecha').value || fechaHoy(), tipo: document.getElementById('g-tipo').value, monto, nota: limpio(document.getElementById('g-nota').value) || null };
+  try {
+    if(id) await dbPatch(`gastos?id=eq.${id}`, d); else await dbPost('gastos', d);
+    toast('✓ Gasto guardado'); limpiarGasto(); loadResumen();
+  } catch(e){ toast('Error: '+e.message); }
+}
+async function borrarGasto(id){
+  const g = gastos.find(x=>x.id===id); if(!g) return;
+  if(!confirm(`¿Borrar el gasto ${g.tipo} de ${soles(g.monto)}?`)) return;
+  try { await dbDelete(`gastos?id=eq.${id}`); toast('✓ Gasto borrado'); loadResumen(); } catch(e){ toast('Error: '+e.message); }
+}
 
 // ═════════ MENSAJES Y LINK DE DATOS ═════════
 const WA_NEGOCIO = '51932064851';
