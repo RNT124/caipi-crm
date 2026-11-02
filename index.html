@@ -86,6 +86,21 @@ button{font:inherit;cursor:pointer}
   </div>
 </div>
 
+<!-- ═════════ PÚBLICO: ?datos ═════════ -->
+<div id="pub-page" style="display:none;min-height:100vh;background:linear-gradient(160deg,var(--sand),var(--coral-light));padding:20px 14px 60px">
+  <div style="max-width:480px;margin:0 auto">
+    <div class="logo" style="margin:10px 0 4px">CAIPI</div>
+    <div class="hint" style="text-align:center;margin-bottom:16px">Datos para el envío de tu pedido</div>
+    <div class="card" id="pub-paso1">
+      <div class="card-title">Busca tu pedido</div>
+      <input id="pub-q" type="text" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="Tu celular o tu usuario de WhatsApp" class="mb8" onkeydown="if(event.key==='Enter')pubBuscar()">
+      <button class="btn btn-primary btn-block" onclick="pubBuscar()">Buscar</button>
+      <div id="pub-msg1" class="hint mt8"></div>
+    </div>
+    <div id="pub-paso2" style="display:none"></div>
+  </div>
+</div>
+
 <!-- ═════════ APP ═════════ -->
 <div id="app-page">
   <div class="topbar">
@@ -99,6 +114,7 @@ button{font:inherit;cursor:pointer}
     <div class="tab" id="tab-pedidos" onclick="irTab('pedidos')">📦 Pedidos</div>
     <div class="tab" id="tab-armado" onclick="irTab('armado')">🧰 Armado Lima</div>
     <div class="tab" id="tab-envios" onclick="irTab('envios')">🚚 Envíos</div>
+    <div class="tab" id="tab-datos" onclick="irTab('datos')">📝 Datos</div>
     <div class="tab" id="tab-catalogo" onclick="irTab('catalogo')">👙 Catálogo</div>
     <div class="tab" id="tab-clientas" onclick="irTab('clientas')">👩 Clientas</div>
   </div>
@@ -176,6 +192,12 @@ button{font:inherit;cursor:pointer}
       <div id="en-lista"></div>
     </div>
 
+    <!-- DATOS -->
+    <div class="view" id="view-datos">
+      <input id="da-buscar" type="text" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="🔍 Celular, usuario o nombre" oninput="filtrar('view-datos', this.value)" class="mb8">
+      <div id="da-lista"></div>
+    </div>
+
     <!-- CATÁLOGO -->
     <div class="view" id="view-catalogo">
       <div class="card">
@@ -218,8 +240,19 @@ button{font:inherit;cursor:pointer}
     <button class="btn btn-primary btn-block" onclick="guardarClienta()">💾 Guardar</button>
   </div>
 </div>
+<!-- MODAL CORREGIR USUARIO / CELULAR -->
+<div class="modal" id="modal-id">
+  <div class="modal-box">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px"><strong style="font-size:16px">✏️ Corregir usuario / celular</strong><button class="btn btn-xs" onclick="cerrarModal('modal-id')">✕</button></div>
+    <input type="hidden" id="mi-id">
+    <div id="mi-actual" class="hint mb8"></div>
+    <label class="lbl">Usuario de WhatsApp</label><input id="mi-wa" autocapitalize="none" autocorrect="off" class="mb8">
+    <label class="lbl">Celular (9 dígitos)</label><input id="mi-tel" type="text" inputmode="numeric" class="mb8">
+    <div id="mi-aviso" class="hint" style="color:var(--red);margin-bottom:8px"></div>
+    <button class="btn btn-primary btn-block" onclick="guardarIdent()">💾 Guardar</button>
+  </div>
+</div>
 <div id="toast-msg"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
 // ═════════ CONFIG ═════════
@@ -299,7 +332,7 @@ function doLogout(){
 }
 
 // ═════════ NAVEGACIÓN ═════════
-const TABS = ['registro','comprar','compras','pedidos','armado','envios','catalogo','clientas'];
+const TABS = ['registro','comprar','compras','pedidos','armado','envios','datos','catalogo','clientas'];
 function irTab(t){
   TABS.forEach(k=>{
     document.getElementById('tab-'+k).classList.toggle('active', k===t);
@@ -311,6 +344,7 @@ function irTab(t){
   if(t==='pedidos') loadPedidos();
   if(t==='armado') loadArmado();
   if(t==='envios') loadEnvios();
+  if(t==='datos') loadDatos();
   tabActual = t;
   if(t==='catalogo') loadCatalogo();
   if(t==='clientas') loadClientas();
@@ -982,6 +1016,7 @@ async function loadPedidos(){
       const c = p.cli, desp = p.estado==='despachado';
       let acc = '';
       if(p.etapa==='listo') acc += `<button class="btn btn-xs btn-primary" onclick="despachar(['${p.id}'])">🚚 Despachar</button>`;
+      if(!desp) acc += `<button class="btn btn-xs" onclick="abrirIdent('${p.id}')">✏️ Usuario/celular</button>`;
       acc += `<button class="btn btn-xs" onclick="editarClienta('${c.id}', recargarTab)">✏️ Clienta</button>`;
       if(tieneDatos(c)) acc += `<button class="btn btn-xs" data-t="${esc(textoDatos(c))}" onclick="copiar(this.dataset.t)">📋 Datos</button>`;
       if(desp) acc += `<button class="btn btn-xs" onclick="revertirDespacho('${p.id}')">↩ Deshacer despacho</button>`;
@@ -1102,7 +1137,7 @@ function renderArmado(){
       if(todoOk) acc += `<button class="btn btn-sm btn-primary" onclick="arEmpacar('${p.id}')">📦 Empacado</button>`;
     }
     return `<div class="card fil-row" data-q="${esc(qPed(p))}">
-      <div class="row" style="justify-content:space-between;align-items:flex-start"><div style="font-weight:600">${esc(nombreCli(c))} <span class="hint" style="font-weight:400">${c.telefono?'· '+esc(c.telefono):'· sin celular'}</span></div>${badge}</div>
+      <div class="row" style="justify-content:space-between;align-items:flex-start"><div style="font-weight:600">${esc(nombreCli(c))} <span class="hint" style="font-weight:400">${c.telefono?'· '+esc(c.telefono):'· sin celular'}</span> <button class="btn btn-xs" onclick="abrirIdent('${p.id}')">✏️</button></div>${badge}</div>
       <div class="hint" style="margin:2px 0 4px">${lineaEnvio(c)}</div>${filas}
       <div class="row mt8" style="justify-content:space-between;flex-wrap:wrap">
         <label style="font-size:13px"><input type="checkbox" ${p.pagado?'checked':''} onchange="marcarPagado('${p.id}',this.checked)"> 💰 Pagó · <strong>${soles(totalPed(p))}</strong></label>
@@ -1161,7 +1196,7 @@ function enCard(p, sel){
     <div style="font-size:12.5px;margin-top:4px">${sh?'💵 Envío: lo paga en la agencia':`💵 Cobrar al entregar: <strong>S/ ${ENVIO_MOTO}</strong>`} · ${p.pagado?'💰 sets pagados':'<span style="color:var(--red)">⚠️ pago sin marcar</span>'}</div>`;
   if(p.etapa==='sindatos') extra = `<div class="mt8"><button class="btn btn-xs" onclick="editarClienta('${c.id}', recargarTab)">✏️ Completar datos</button></div>`;
   return `<div class="card fil-row" data-q="${esc(qPed(p))}">
-    <label style="font-weight:600;display:block">${chk}${esc(nombreCli(c))} <span class="hint" style="font-weight:400">${c.telefono?'· '+esc(c.telefono):'· sin celular'}</span></label>
+    <div class="row" style="justify-content:space-between"><label style="font-weight:600">${chk}${esc(nombreCli(c))} <span class="hint" style="font-weight:400">${c.telefono?'· '+esc(c.telefono):'· sin celular'}</span></label><button class="btn btn-xs" onclick="abrirIdent('${p.id}')">✏️</button></div>
     <div style="font-size:13px;margin-top:2px">${p.items.map(i=>`${i.cantidad}× ${esc(i.producto)} · ${esc(i.variante||'')}`).join(' + ')} <span class="hint">· ${soles(totalPed(p))}</span></div>${extra}</div>`;
 }
 function renderEnvios(){
@@ -1194,6 +1229,245 @@ function renderEnvios(){
 }
 function enSel(){ return [...document.querySelectorAll('.en-sel:checked')].map(x=>x.value); }
 function enSelTodos(t){ document.querySelectorAll('.en-sel').forEach(x=>{ x.checked = !!t && x.dataset.t===t; }); }
+
+// ═════════ MENSAJES Y LINK DE DATOS ═════════
+const WA_NEGOCIO = '51932064851';
+const LINK_DATOS = 'https://rnt124.github.io/caipi-crm/?datos';
+const MSG_CANAL = `¡Hola! 🌴 Te saludamos de CAIPI.
+
+Para enviar tu pedido, completa tus datos aquí: ${LINK_DATOS}
+
+1. Escribe tu celular o tu usuario de WhatsApp.
+2. Revisa que tu pedido esté correcto.
+3. Llena tus datos de envío hasta el final.
+
+Al terminar se abrirá WhatsApp para confirmar. ¡Gracias por tu compra! 👙`;
+function msgClienta(c){ return MSG_CANAL.replace('¡Hola! 🌴', `¡Hola${c && c.nombre ? ' '+String(c.nombre).split(' ')[0] : ''}! 🌴`); }
+
+// ═════════ PESTAÑA DATOS ═════════
+async function loadDatos(){
+  const box = document.getElementById('da-lista');
+  box.innerHTML = '<div class="hint">Cargando…</div>';
+  try {
+    await cargarLista(false);
+    const porCli = {};
+    lista.forEach(p=>{ if(!p.cli.id) return; (porCli[p.cli.id] = porCli[p.cli.id] || { c:p.cli, peds:[] }).peds.push(p); });
+    const todas = Object.values(porCli);
+    const faltan = todas.filter(x=>!tieneDatos(x.c)).sort((a,b)=>nombreCli(a.c).localeCompare(nombreCli(b.c)));
+    const listas = todas.length - faltan.length;
+    const head = `<div class="card"><div style="font-size:15px"><strong class="falta">${faltan.length}</strong> clienta(s) con pedido activo sin datos completos · <span style="color:var(--green)">✓ ${listas} completas</span></div>
+      <div class="pill-row mt8"><button class="btn btn-sm btn-primary" data-t="${esc(MSG_CANAL)}" onclick="copiar(this.dataset.t)">📋 Copiar mensaje del canal</button>
+      <button class="btn btn-sm" data-t="${esc(LINK_DATOS)}" onclick="copiar(this.dataset.t)">🔗 Copiar link</button></div></div>`;
+    if(!faltan.length){ box.innerHTML = head + '<div class="card" style="text-align:center">✅ Todas las clientas con pedido activo tienen sus datos</div>'; return; }
+    box.innerHTML = head + faltan.map(({c,peds})=>{
+      const sets = peds.reduce((a,p)=>a+p.items.reduce((b,i)=>b+i.cantidad,0),0);
+      const falta = [];
+      if(!c.nombre) falta.push('nombre'); if(!c.telefono) falta.push('celular'); if(!c.tipo_envio) falta.push('tipo de envío');
+      else if(esShalom(c)){ if(!c.dni) falta.push('DNI'); if(!c.agencia) falta.push('agencia'); }
+      else { if(!c.distrito) falta.push('distrito'); if(!c.direccion) falta.push('dirección'); }
+      const wa = c.telefono ? `<a class="btn btn-xs btn-primary" target="_blank" href="https://wa.me/51${esc(c.telefono)}?text=${encodeURIComponent(msgClienta(c))}">💬 WhatsApp</a>` : '<span class="badge badge-warn">sin celular</span>';
+      return `<div class="card fil-row" data-q="${esc(norm([c.nombre,c.telefono,c.usuario_wa].join(' ')))}">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap"><div><strong>${esc(nombreCli(c))}</strong> <span class="hint">${c.telefono?'· '+esc(c.telefono):''}${c.usuario_wa?' · 👤 '+esc(c.usuario_wa):''}</span>
+          <div class="hint">${sets} set(s) · falta: ${falta.join(', ')}</div></div>
+          <div class="pill-row">${wa}<button class="btn btn-xs" onclick="editarClienta('${c.id}', recargarTab)">✏️</button></div></div></div>`;
+    }).join('');
+    filtrar('view-datos', document.getElementById('da-buscar').value);
+  } catch(e){ box.innerHTML = '<div class="hint" style="color:var(--red)">Error: '+esc(e.message)+'</div>'; }
+}
+
+// ═════════ CORREGIR USUARIO / CELULAR DE UN PEDIDO ═════════
+function abrirIdent(pid){
+  const p = buscarPed(pid); if(!p) return;
+  const c = p.cli || {};
+  document.getElementById('mi-id').value = pid;
+  document.getElementById('mi-wa').value = c.usuario_wa || '';
+  document.getElementById('mi-tel').value = c.telefono || '';
+  document.getElementById('mi-actual').textContent = 'Este pedido está a nombre de: ' + nombreCli(c) + (c.telefono ? ' · '+c.telefono : ' · sin celular');
+  document.getElementById('mi-aviso').textContent = '';
+  document.getElementById('modal-id').classList.add('open');
+}
+async function guardarIdent(){
+  const pid = document.getElementById('mi-id').value;
+  const p = buscarPed(pid); if(!p) return;
+  const c = p.cli || {};
+  const av = document.getElementById('mi-aviso');
+  const usuario = limpio(document.getElementById('mi-wa').value).replace(/^@+/,'') || null;
+  const telIn = document.getElementById('mi-tel').value;
+  const tel = normTel(telIn) || null;
+  if(tel && tel.length!==9){ av.textContent = 'El celular debe tener 9 dígitos.'; return; }
+  if(!tel && !usuario){ av.textContent = 'Pon un celular o un usuario de WhatsApp.'; return; }
+  try {
+    // ¿el celular ya es de otra clienta?
+    if(tel && tel!==c.telefono){
+      const ex = await dbGet(`clientes?telefono=eq.${tel}&id=neq.${c.id}&limit=1`);
+      if(ex.length){
+        const otra = ex[0];
+        const n = (await dbGet(`pedidos?cliente_id=eq.${otra.id}&select=id`)).length;
+        if(!confirm(`Ese celular ya es de "${nombreCli(otra)}" (${n} pedido(s)).\n\n¿Unir ESTE pedido a esa clienta?`)) return;
+        await dbPatch(`pedidos?id=eq.${pid}`, { cliente_id: otra.id });
+        if(usuario && !otra.usuario_wa) await dbPatch(`clientes?id=eq.${otra.id}`, { usuario_wa: usuario });
+        cerrarModal('modal-id'); toast('✓ Pedido unido a '+nombreCli(otra)); await sincronizarEstados(); recargarTab(); return;
+      }
+    }
+    // ¿la clienta actual tiene otros pedidos? entonces el error es de este pedido: se crea una clienta aparte
+    const otros = (await dbGet(`pedidos?cliente_id=eq.${c.id}&id=neq.${pid}&select=id`)).length;
+    if(otros && (tel!==c.telefono)){
+      if(!confirm(`${nombreCli(c)} tiene ${otros} pedido(s) más. Para no cambiarle sus datos, este pedido pasará a una clienta nueva con estos datos. ¿Seguir?`)) return;
+      const r = await dbPost('clientes', { telefono: tel, usuario_wa: usuario, nombre: usuario || null });
+      await dbPatch(`pedidos?id=eq.${pid}`, { cliente_id: r[0].id });
+    } else {
+      await dbPatch(`clientes?id=eq.${c.id}`, { telefono: tel, usuario_wa: usuario });
+    }
+    cerrarModal('modal-id'); toast('✓ Datos corregidos'); recargarTab();
+  } catch(e){ av.textContent = 'Error: '+e.message; }
+}
+
+// ═════════ PÁGINA PÚBLICA ?datos ═════════
+let pub = { c:null, peds:[], tipo:'' };
+function ocultar(t, ver){ t = String(t||''); ver = ver==null ? 4 : ver; return t.length<=ver ? t : t.slice(0,ver) + '•'.repeat(Math.min(6, t.length-ver)); }
+async function pubBuscar(){
+  const q = limpio(document.getElementById('pub-q').value).replace(/^@+/,'');
+  const msg = document.getElementById('pub-msg1');
+  msg.style.color = ''; msg.textContent = '';
+  if(q.length<3){ msg.textContent = 'Escribe tu celular o tu usuario de WhatsApp.'; return; }
+  msg.textContent = 'Buscando…';
+  try {
+    const soloNum = /^[\d\s+\-]+$/.test(q);
+    let cs;
+    if(soloNum){
+      const tel = normTel(q);
+      if(tel.length!==9){ msg.textContent = 'El celular debe tener 9 dígitos.'; return; }
+      cs = await dbGet(`clientes?telefono=eq.${tel}&limit=1`);
+    } else {
+      cs = await dbGet(`clientes?usuario_wa=ilike.${encodeURIComponent(q.replace(/[*%,()]/g,''))}&limit=5`);
+    }
+    let encontrado = null, peds = [];
+    for(const c of cs){
+      const ps = await dbGet(`pedidos?cliente_id=eq.${c.id}&estado=neq.despachado&order=creado_en.asc`);
+      if(ps.length){ encontrado = c; peds = ps; break; }
+    }
+    if(!encontrado){
+      msg.style.color = 'var(--red)';
+      msg.innerHTML = 'No encontramos pedidos pendientes con ese dato. Revisa que esté bien escrito o <a href="https://wa.me/'+WA_NEGOCIO+'" target="_blank">escríbenos por WhatsApp</a>.';
+      return;
+    }
+    const items = await dbGet(`items?pedido_id=in.(${peds.map(p=>p.id).join(',')})&order=creado_en.asc`);
+    pub = { c:encontrado, peds, items, tipo: encontrado.tipo_envio || '' };
+    msg.textContent = '';
+    document.getElementById('pub-paso1').style.display = 'none';
+    if(tieneDatos(encontrado)) pubVistaGuardada(); else pubFormulario();
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent = 'Error de conexión, intenta de nuevo.'; }
+}
+function pubPedidoHtml(){
+  const tot = pub.items.reduce((a,i)=>a+Number(i.precio_venta)*i.cantidad,0);
+  return `<div class="card"><div class="card-title">Tu pedido</div>
+    ${pub.items.map(i=>`<div class="line"><span>${i.cantidad}× ${esc(i.producto)} · ${esc(i.variante||'')}</span><span>${soles(i.precio_venta*i.cantidad)}</span></div>`).join('')}
+    <div style="text-align:right;font-weight:600;margin-top:6px">Total: ${soles(tot)}</div>
+    <div class="hint mt8">¿Algo no está bien? <a href="https://wa.me/${WA_NEGOCIO}" target="_blank">Escríbenos</a>.</div></div>`;
+}
+function pubVistaGuardada(){
+  const c = pub.c, sh = esShalom(c);
+  const filas = [['Nombre', c.nombre], ['Celular', ocultar(c.telefono,3)], ['DNI', ocultar(c.dni,2)], ['Envío', sh?'Shalom':'Motorizado']]
+    .concat(sh ? [['Destino', (c.departamento||'')+' / '+(c.distrito||'')], ['Agencia', ocultar(c.agencia,12)]] : [['Distrito', c.distrito], ['Dirección', ocultar(c.direccion,8)]]);
+  document.getElementById('pub-paso2').innerHTML = pubPedidoHtml() + `<div class="card"><div class="card-title">Tus datos guardados</div>
+    ${filas.map(([k,v])=>`<div class="line"><span class="hint">${k}</span><span>${esc(v||'—')}</span></div>`).join('')}
+    <button class="btn btn-primary btn-block mt8" onclick="pubConfirmar()">✅ Mis datos son correctos</button>
+    <button class="btn btn-block mt8" onclick="pubFormulario()">✏️ Actualizar mis datos</button></div>`;
+  document.getElementById('pub-paso2').style.display = '';
+}
+function pubFormulario(){
+  const c = pub.c;
+  // al actualizar, los datos sensibles se vuelven a escribir (no se muestran completos)
+  const yaTenia = tieneDatos(c);
+  document.getElementById('pub-paso2').innerHTML = pubPedidoHtml() + `<div class="card"><div class="card-title">Tus datos de envío</div>
+    <label class="lbl">Nombre y apellido</label><input id="pf-nombre" class="mb8" value="${esc(c.nombre && c.nombre!==c.usuario_wa ? c.nombre : '')}">
+    <label class="lbl">Celular</label><input id="pf-tel" type="text" inputmode="numeric" class="mb8" placeholder="9 dígitos" value="${esc(c.telefono||'')}">
+    <label class="lbl">DNI</label><input id="pf-dni" type="text" inputmode="numeric" class="mb8" placeholder="${yaTenia&&c.dni?'Vuelve a escribir tu DNI':''}">
+    <label class="lbl">¿Cómo quieres recibir tu pedido?</label>
+    <div class="row mb8"><button type="button" class="btn btn-sm" id="pf-t-motorizado" onclick="pfTipo('motorizado')">🏍️ Motorizado (Lima y Callao)</button><button type="button" class="btn btn-sm" id="pf-t-shalom" onclick="pfTipo('shalom')">📦 Shalom (provincias)</button></div>
+    <div id="pf-moto" style="display:none">
+      <div class="hint mb8">El envío cuesta S/ ${ENVIO_MOTO} y se paga al motorizado al recibir.</div>
+      <label class="lbl">Distrito</label><select id="pf-distrito" class="mb8">${opcionesDistritos(c.tipo_envio==='motorizado'?c.distrito:'')}</select>
+      <label class="lbl">Dirección</label><input id="pf-dir" class="mb8" placeholder="Calle, número, dpto.">
+      <label class="lbl">Referencia</label><input id="pf-ref" class="mb8" placeholder="Ej: frente al parque">
+    </div>
+    <div id="pf-shalom" style="display:none">
+      <div class="hint mb8">El envío por Shalom lo pagas al recoger en la agencia.</div>
+      <label class="lbl">Departamento</label><select id="pf-dep" class="mb8" onchange="pfDep()">${'<option value="">— elegir —</option>'+Object.keys(SHALOM_AGENCIAS).map(d=>`<option>${esc(d)}</option>`).join('')}</select>
+      <label class="lbl">Distrito / provincia</label><select id="pf-sdist" class="mb8" onchange="pfSDist()"><option value="">— primero el departamento —</option></select>
+      <label class="lbl">Agencia Shalom</label><select id="pf-ag" class="mb8"><option value="">— primero el distrito —</option></select>
+    </div>
+    <div id="pf-aviso" class="hint" style="color:var(--red);margin-bottom:8px"></div>
+    <button class="btn btn-primary btn-block" onclick="pubGuardar()">Guardar y confirmar por WhatsApp</button></div>`;
+  document.getElementById('pub-paso2').style.display = '';
+  pfTipo(c.tipo_envio || '');
+}
+function pfTipo(t){
+  pub.tipo = t;
+  ['motorizado','shalom'].forEach(k=>document.getElementById('pf-t-'+k).classList.toggle('btn-primary', k===t));
+  document.getElementById('pf-moto').style.display = t==='motorizado' ? '' : 'none';
+  document.getElementById('pf-shalom').style.display = t==='shalom' ? '' : 'none';
+}
+function pfDep(){
+  const dep = document.getElementById('pf-dep').value;
+  const ds = dep && SHALOM_AGENCIAS[dep] ? Object.keys(SHALOM_AGENCIAS[dep]) : [];
+  document.getElementById('pf-sdist').innerHTML = '<option value="">— elegir —</option>' + ds.map(d=>`<option>${esc(d)}</option>`).join('');
+  pfSDist();
+}
+function pfSDist(){
+  const dep = document.getElementById('pf-dep').value, dist = document.getElementById('pf-sdist').value;
+  const ags = dep && dist && SHALOM_AGENCIAS[dep] && SHALOM_AGENCIAS[dep][dist] ? SHALOM_AGENCIAS[dep][dist] : [];
+  document.getElementById('pf-ag').innerHTML = '<option value="">— elegir agencia —</option>' + ags.map(a=>`<option>${esc(a)}</option>`).join('');
+}
+async function pubGuardar(){
+  const av = document.getElementById('pf-aviso'); av.textContent = '';
+  const v = id=>limpio(document.getElementById(id).value);
+  const nombre = v('pf-nombre'), tel = normTel(v('pf-tel')), dni = v('pf-dni').replace(/\s/g,'');
+  if(nombre.length<3){ av.textContent = 'Escribe tu nombre y apellido.'; return; }
+  if(tel.length!==9){ av.textContent = 'Escribe tu celular de 9 dígitos.'; return; }
+  if(!pub.tipo){ av.textContent = 'Elige Motorizado o Shalom.'; return; }
+  const d = { nombre, telefono:tel, tipo_envio:pub.tipo, datos_en:new Date().toISOString() };
+  if(pub.tipo==='shalom'){
+    if(!/^\d{8}$/.test(dni)){ av.textContent = 'Escribe tu DNI de 8 dígitos (Shalom lo pide para entregar).'; return; }
+    const dep = v('pf-dep'), dist = document.getElementById('pf-sdist').value, ag = document.getElementById('pf-ag').value;
+    if(!dep || !dist || !ag){ av.textContent = 'Elige departamento, distrito y agencia.'; return; }
+    Object.assign(d, { dni, departamento:dep, distrito:dist, agencia:ag, direccion:null, referencia:null });
+  } else {
+    if(dni && !/^\d{8}$/.test(dni)){ av.textContent = 'El DNI debe tener 8 dígitos.'; return; }
+    const dist = document.getElementById('pf-distrito').value, dir = v('pf-dir');
+    if(!dist){ av.textContent = 'Elige tu distrito.'; return; }
+    if(dir.length<5){ av.textContent = 'Escribe tu dirección completa.'; return; }
+    Object.assign(d, { distrito:dist, direccion:dir, referencia:v('pf-ref')||null, departamento:null, agencia:null });
+    if(dni) d.dni = dni;
+  }
+  try {
+    if(tel!==pub.c.telefono){
+      const ex = await dbGet(`clientes?telefono=eq.${tel}&id=neq.${pub.c.id}&limit=1`);
+      if(ex.length){ av.innerHTML = 'Ese celular ya está registrado con otro pedido. <a href="https://wa.me/'+WA_NEGOCIO+'" target="_blank">Escríbenos por WhatsApp</a> y lo unimos.'; return; }
+    }
+    await dbPatch(`clientes?id=eq.${pub.c.id}`, d);
+    Object.assign(pub.c, d);
+    pubIrWhatsApp('guardé');
+  } catch(e){ av.textContent = 'No se pudo guardar, intenta de nuevo.'; }
+}
+async function pubConfirmar(){
+  try { await dbPatch(`clientes?id=eq.${pub.c.id}`, { datos_en:new Date().toISOString() }); } catch(e){}
+  pubIrWhatsApp('confirmé');
+}
+function pubIrWhatsApp(accion){
+  const c = pub.c, sh = esShalom(c);
+  const sets = pub.items.map(i=>`• ${i.cantidad}× ${i.producto} · ${i.variante||''}`).join('\n');
+  const l = [`Hola CAIPI 👙, ${accion} mis datos de envío:`, '', `Nombre: ${c.nombre}`, `Celular: ${c.telefono}`];
+  if(c.dni) l.push(`DNI: ${c.dni}`);
+  if(sh) l.push('Envío: Shalom', `Destino: ${c.departamento} / ${c.distrito}`, `Agencia: ${c.agencia}`);
+  else { l.push('Envío: Motorizado', `Distrito: ${c.distrito}`, `Dirección: ${c.direccion}`); if(c.referencia) l.push(`Referencia: ${c.referencia}`); }
+  l.push('', 'Mi pedido:', sets);
+  const url = `https://wa.me/${WA_NEGOCIO}?text=${encodeURIComponent(l.join('\n'))}`;
+  document.getElementById('pub-paso2').innerHTML = `<div class="card" style="text-align:center"><div style="font-size:34px">✅</div><strong>¡Listo, ${esc(String(c.nombre).split(' ')[0])}!</strong>
+    <div class="hint mt8">Tus datos quedaron guardados. Ahora toca <strong>Enviar</strong> en WhatsApp para confirmar.</div>
+    <a class="btn btn-primary btn-block mt8" href="${url}" id="pub-wa">💬 Abrir WhatsApp</a></div>`;
+  try { location.href = url; } catch(e){}
+}
 
 // ═════════ DATOS DE ENVÍO (copiados de Jassmin: 50 distritos Lima/Callao, 472 agencias Shalom) ═════════
 const DISTRITOS_LIMA_CALLAO = {
@@ -1524,10 +1798,18 @@ const SHALOM_AGENCIAS = {
 
 // ═════════ INICIO ═════════
 (function(){
+  // link público para clientas: no pide login
+  if(/(^|[?&])datos(=|&|$)/.test(location.search.slice(1))){
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('pub-page').style.display = 'block';
+    document.title = 'CAIPI · Datos de envío';
+    return;
+  }
   let u = null;
   try { u = localStorage.getItem('caipi_user'); } catch(e){}
   if(u && USERS[u]) entrar(u);
 })();
 </script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </body>
 </html>
