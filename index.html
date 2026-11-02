@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Caipi CRM</title>
+<style>
+:root{
+  --coral:#D9654B;--coral-light:#FCEDE8;--coral-dark:#8A3420;
+  --sand:#F6F1EA;--sea:#1E7F8C;--sea-light:#E3F3F4;
+  --amber:#B87316;--amber-light:#FAEEDA;
+  --red:#A32D2D;--red-light:#FCEBEB;
+  --green:#3B6D11;--green-light:#EAF3DE;
+  --bg:#FBF9F6;--surface:#FFFFFF;--border:#ECE6DE;--border2:#D8CFC4;
+  --text:#1F1A17;--text2:#665D56;--text3:#A0968D;
+  --primary:var(--coral);--primary-hover:var(--coral-dark);--primary-light:var(--coral-light);
+  --radius:12px;--radius-sm:8px;
+  --shadow:0 2px 8px rgba(31,26,23,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh;-webkit-text-size-adjust:100%}
+input,select,textarea{font:inherit;font-size:16px;width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:#fff;color:var(--text);outline:none}
+input[type=checkbox],input[type=radio]{width:auto}
+input:focus,select:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
+button{font:inherit;cursor:pointer}
+.btn{border:1px solid var(--border2);background:#fff;color:var(--text);padding:10px 14px;border-radius:var(--radius-sm);font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-sm{padding:7px 11px;font-size:13px}
+.btn-xs{padding:4px 9px;font-size:12px}
+.btn-block{width:100%}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
+.card-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:10px}
+.pill-row{display:flex;gap:6px;flex-wrap:wrap}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:var(--sand);color:var(--text2)}
+.badge-info{background:var(--sea-light);color:var(--sea)}
+.badge-warn{background:var(--amber-light);color:var(--amber)}
+.hint{font-size:12px;color:var(--text3)}
+.row{display:flex;gap:8px;align-items:center}
+.mb8{margin-bottom:8px}.mt8{margin-top:8px}
+.selbox{background:var(--primary-light);border-radius:var(--radius-sm);padding:10px 12px;font-size:14px}
+.line{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;flex-wrap:wrap}
+.line:last-child{border-bottom:none}
+/* login */
+#login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(160deg,var(--sand),var(--coral-light))}
+.login-box{background:#fff;border-radius:16px;padding:28px 22px;width:100%;max-width:360px;box-shadow:0 8px 24px rgba(31,26,23,.12)}
+.logo{font-size:28px;font-weight:700;letter-spacing:.12em;color:var(--primary);text-align:center}
+#login-error{display:none;color:var(--red);font-size:13px;margin-top:8px;text-align:center}
+/* app */
+#app-page{display:none;min-height:100vh}
+.topbar{position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
+.topbar .logo{font-size:18px;text-align:left}
+.tabs{display:flex;gap:4px;overflow-x:auto;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:49px;z-index:9;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{white-space:nowrap;padding:8px 14px;border-radius:20px;font-size:14px;font-weight:500;color:var(--text2);cursor:pointer;flex-shrink:0}
+.tab.active{background:var(--primary-light);color:var(--primary-hover)}
+.content{padding:14px 12px 80px;max-width:720px;margin:0 auto}
+.view{display:none}.view.active{display:block}
+#toast-msg{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;padding:10px 20px;border-radius:20px;font-size:14px;font-weight:500;z-index:9999;transition:opacity .3s;pointer-events:none;max-width:90vw;text-align:center;opacity:0}
+.talla-btn{min-width:56px}
+</style>
+</head>
+<body>
+
+<!-- ═════════ LOGIN ═════════ -->
+<div id="login-page">
+  <div class="login-box">
+    <div class="logo">CAIPI</div>
+    <div class="hint" style="text-align:center;margin:4px 0 20px">Sistema de gestión</div>
+    <input id="inp-user" type="text" placeholder="Usuario" autocapitalize="none" autocorrect="off" class="mb8">
+    <input id="inp-pass" type="password" placeholder="Contraseña" class="mb8" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn btn-primary btn-block" onclick="doLogin()">Entrar</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<!-- ═════════ APP ═════════ -->
+<div id="app-page">
+  <div class="topbar">
+    <div class="logo">CAIPI</div>
+    <div class="row"><span id="u-nombre" class="hint"></span><button class="btn btn-xs" onclick="doLogout()">Salir</button></div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" id="tab-registro" onclick="irTab('registro')">🔴 Registro</div>
+    <div class="tab" id="tab-catalogo" onclick="irTab('catalogo')">👙 Catálogo</div>
+    <div class="tab" id="tab-clientas" onclick="irTab('clientas')">👩 Clientas</div>
+  </div>
+  <div class="content">
+
+    <!-- REGISTRO -->
+    <div class="view active" id="view-registro">
+      <div class="card">
+        <div class="card-title">1. Clienta</div>
+        <input id="r-buscar" type="text" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" placeholder="Celular, nombre o usuario de WhatsApp" oninput="buscarClienta(this.value)">
+        <div id="r-res" class="mt8"></div>
+        <div id="r-sel" class="mt8"></div>
+      </div>
+      <div class="card" id="r-form" style="display:none">
+        <div class="card-title">2. Canal</div>
+        <div id="r-canales" class="pill-row" style="margin-bottom:14px"></div>
+        <div class="card-title">3. Set</div>
+        <input id="r-prod" list="r-prod-list" placeholder="Modelo (escribe uno nuevo o elige)" oninput="prodCambio()" onchange="prodCambio()" autocomplete="off" class="mb8">
+        <datalist id="r-prod-list"></datalist>
+        <div class="row mb8" id="r-tallas"></div>
+        <div id="r-colores" class="pill-row mb8"></div>
+        <input id="r-color" placeholder="Color / estampado" class="mb8" autocomplete="off">
+        <div class="row mb8">
+          <input id="r-precio" type="number" inputmode="decimal" placeholder="Precio S/" value="105" style="flex:1">
+          <input id="r-cant" type="number" inputmode="numeric" value="1" min="1" style="width:80px">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="agregarItem()">+ Agregar</button>
+        <div id="r-items" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <!-- CATÁLOGO -->
+    <div class="view" id="view-catalogo">
+      <div class="card">
+        <div class="card-title">Modelos</div>
+        <div class="hint mb8">Se llena solo al registrar ventas.</div>
+        <div id="cat-lista"></div>
+      </div>
+    </div>
+
+    <!-- CLIENTAS -->
+    <div class="view" id="view-clientas">
+      <input id="cl-buscar" type="text" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="🔍 Buscar por celular, nombre o usuario" oninput="filtrarClientas(this.value)" class="mb8">
+      <div class="card"><div id="cl-lista"></div></div>
+    </div>
+
+  </div>
+</div>
+<div id="toast-msg"></div>
+
+<script>
+// ═════════ CONFIG ═════════
+const SUPA_URL = 'https://abjeqhpljiewvmoqrcfz.supabase.co';
+const SUPA_KEY = 'sb_publishable_ETTYvITLgfx5eokUA67GRw_UWGzc25v';
+const PRECIO_SET = 105;
+const TALLAS = ['S','M'];
+const CANALES = ['WhatsApp','Instagram','TikTok'];
+// Contraseñas guardadas como huella SHA-256 (no en texto plano)
+const USERS = {
+  admin:    { hash:'c8a3033966dc42f9c1af1b7949affe57a96568052f44d8f01df397f95358a7e9', nombre:'Renato', rol:'admin' },
+  operador: { hash:'20f8307a64915ad1a915f8115aa85b69be2cc0f22017460c92fba664d29adb41', nombre:'Operador', rol:'operador' }
+};
+
+// ═════════ SUPABASE ═════════
+async function supaFetch(path, method='GET', body=null, prefer='return=representation'){
+  const opts = { method, headers: { 'apikey': SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': prefer } };
+  if(body) opts.body = body;
+  const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, opts);
+  if(!res.ok){ const e = await res.text(); throw new Error(e); }
+  const t = await res.text();
+  return t ? JSON.parse(t) : null;
+}
+const dbGet    = p => supaFetch(p, 'GET');
+const dbPost   = (p,b) => supaFetch(p, 'POST', JSON.stringify(b));
+const dbPatch  = (p,b) => supaFetch(p, 'PATCH', JSON.stringify(b));
+const dbDelete = p => supaFetch(p, 'DELETE');
+
+// ═════════ UTILIDADES ═════════
+function esc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function soles(n){ return 'S/ '+(Math.round((Number(n)||0)*100)/100).toFixed(2); }
+// minúsculas, sin tildes, sin espacios dobles
+function norm(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
+// clave de cruce producto + variante
+function clave(prod, vari){ return norm(prod)+'|'+norm(vari); }
+// teléfono a 9 dígitos (quita +51)
+function normTel(t){ let d = String(t||'').replace(/\D/g,''); if(d.length>9 && d.indexOf('51')===0) d = d.slice(2); return d; }
+function limpio(s){ return String(s||'').replace(/\s+/g,' ').trim(); }
+function variante(talla, color){ return [talla, limpio(color)].filter(Boolean).join(' / '); }
+let toastT = null;
+function toast(msg){
+  const el = document.getElementById('toast-msg');
+  el.textContent = msg; el.style.opacity = '1';
+  clearTimeout(toastT); toastT = setTimeout(()=>{ el.style.opacity='0'; }, 2600);
+}
+async function sha256(txt){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// ═════════ LOGIN ═════════
+let currentUser = null;
+async function doLogin(){
+  const u = document.getElementById('inp-user').value.trim().toLowerCase();
+  const p = document.getElementById('inp-pass').value;
+  const err = document.getElementById('login-error'); err.style.display='none';
+  const usr = USERS[u];
+  let ok = false;
+  try { ok = !!usr && (await sha256(p)) === usr.hash; } catch(e){ ok = false; }
+  if(!ok){ err.textContent='Usuario o contraseña incorrectos'; err.style.display='block'; return; }
+  entrar(u);
+}
+function entrar(u){
+  currentUser = { key:u, ...USERS[u] };
+  try { localStorage.setItem('caipi_user', u); } catch(e){}
+  document.getElementById('login-page').style.display='none';
+  document.getElementById('app-page').style.display='block';
+  document.getElementById('u-nombre').textContent = currentUser.nombre;
+  irTab('registro');
+}
+function doLogout(){
+  currentUser = null;
+  try { localStorage.removeItem('caipi_user'); } catch(e){}
+  document.getElementById('app-page').style.display='none';
+  document.getElementById('login-page').style.display='flex';
+  document.getElementById('inp-pass').value='';
+}
+
+// ═════════ NAVEGACIÓN ═════════
+const TABS = ['registro','catalogo','clientas'];
+function irTab(t){
+  TABS.forEach(k=>{
+    document.getElementById('tab-'+k).classList.toggle('active', k===t);
+    document.getElementById('view-'+k).classList.toggle('active', k===t);
+  });
+  if(t==='registro'){ renderCanales(); renderTallas(); cargarProductos(); }
+  if(t==='catalogo') loadCatalogo();
+  if(t==='clientas') loadClientas();
+}
+
+// ═════════ CANAL Y TALLA ═════════
+let canal = 'WhatsApp';
+try { canal = localStorage.getItem('caipi_canal') || 'WhatsApp'; } catch(e){}
+function setCanal(c){ canal = c; try{ localStorage.setItem('caipi_canal', c); }catch(e){} renderCanales(); }
+function renderCanales(){
+  document.getElementById('r-canales').innerHTML = CANALES.map(c=>`<button type="button" class="btn btn-sm ${c===canal?'btn-primary':''}" onclick="setCanal('${c}')">${c}</button>`).join('');
+}
+let talla = '';
+function setTalla(t){ talla = t; renderTallas(); }
+function renderTallas(){
+  document.getElementById('r-tallas').innerHTML = '<span class="hint" style="margin-right:4px">Talla</span>' +
+    TALLAS.map(t=>`<button type="button" class="btn talla-btn ${t===talla?'btn-primary':''}" onclick="setTalla('${t}')">${t}</button>`).join('');
+}
+
+// ═════════ PRODUCTOS (catálogo automático) ═════════
+let productos = [];
+async function cargarProductos(){
+  try {
+    productos = await dbGet('productos?order=nombre.asc&limit=1000');
+    document.getElementById('r-prod-list').innerHTML = productos.map(p=>`<option value="${esc(p.nombre)}">`).join('');
+  } catch(e){ console.error(e); }
+}
+function prodActual(){
+  const n = norm(document.getElementById('r-prod').value);
+  return n ? (productos.find(p=>norm(p.nombre)===n) || null) : null;
+}
+// colores ya usados en un producto (de sus variantes "S / Negro")
+function coloresDe(p){
+  const set = new Map();
+  (p && Array.isArray(p.variantes) ? p.variantes : []).forEach(v=>{
+    const c = limpio(String(v).split('/').slice(1).join('/'));
+    if(c && !set.has(norm(c))) set.set(norm(c), c);
+  });
+  return [...set.values()];
+}
+function prodCambio(){
+  const p = prodActual();
+  const box = document.getElementById('r-colores');
+  if(!p){ box.innerHTML=''; return; }
+  if(p.precio_venta!=null) document.getElementById('r-precio').value = p.precio_venta;
+  const cols = coloresDe(p);
+  if(cols.length===1 && !document.getElementById('r-color').value.trim()) document.getElementById('r-color').value = cols[0];
+  box.innerHTML = cols.map(c=>`<button type="button" class="btn btn-xs" data-c="${esc(c)}" onclick="document.getElementById('r-color').value=this.dataset.c">${esc(c)}</button>`).join('');
+}
+async function guardarProducto(nombre, vari, precio){
+  const ex = productos.find(p=>norm(p.nombre)===norm(nombre));
+  if(!ex){
+    await dbPost('productos', { nombre, precio_venta:precio, variantes: vari?[vari]:[] });
+  } else {
+    const vars = Array.isArray(ex.variantes) ? ex.variantes.slice() : [];
+    const nueva = vari && !vars.some(v=>norm(v)===norm(vari));
+    if(nueva) vars.push(vari);
+    if(nueva || Number(ex.precio_venta)!==precio) await dbPatch(`productos?id=eq.${ex.id}`, { precio_venta:precio, variantes:vars });
+  }
+}
+
+// ═════════ CLIENTAS: búsqueda en registro ═════════
+let cliente = null;
+let buscarT = null;
+function buscarClienta(val){ clearTimeout(buscarT); buscarT = setTimeout(()=>buscarClientaYa(val), 250); }
+async function buscarClientaYa(val){
+  const res = document.getElementById('r-res');
+  const texto = limpio(val).replace(/[,()*%]/g,'');
+  const soloNum = /^[\d\s+\-]+$/.test(texto);
+  const tel = normTel(texto);
+  if((soloNum && tel.length<4) || (!soloNum && texto.length<2)){ res.innerHTML=''; return; }
+  try {
+    let m;
+    if(soloNum) m = await dbGet(`clientes?telefono=like.${tel}*&limit=6`);
+    else {
+      const q = encodeURIComponent(texto);
+      m = await dbGet(`clientes?or=(nombre.ilike.*${q}*,usuario_wa.ilike.*${q}*)&limit=8`);
+    }
+    let html = '';
+    if(m.length){
+      html += '<div class="pill-row">' + m.map(c=>`<button class="btn btn-xs" onclick="selClienta('${c.id}')">${esc(c.nombre||c.usuario_wa||'Sin nombre')} · ${c.telefono?esc(c.telefono):'👤 '+esc(c.usuario_wa||'')}</button>`).join('') + '</div>';
+    } else {
+      html += `<div class="hint mb8">No encontrada: <strong>${esc(texto)}</strong></div>`;
+    }
+    if(soloNum){
+      if(tel.length===9 && !m.some(c=>c.telefono===tel)) html += `<div class="mt8"><button class="btn btn-sm" onclick="crearClienta('${tel}')">+ Nueva clienta con celular ${tel}</button></div>`;
+      else if(tel.length!==9) html += '<div class="hint mt8">El celular debe tener 9 dígitos.</div>';
+    } else if(!m.some(c=>norm(c.usuario_wa)===norm(texto))){
+      html += `<div class="mt8"><button class="btn btn-sm" data-u="${esc(texto)}" onclick="crearClientaWA(this.dataset.u)">+ Nueva con usuario WhatsApp «${esc(texto)}» (sin celular)</button></div>`;
+    }
+    res.innerHTML = html;
+  } catch(e){ res.innerHTML = '<div class="hint" style="color:var(--red)">Error de conexión</div>'; }
+}
+async function crearClienta(tel){
+  const nombre = prompt('Nombre de la clienta (opcional):');
+  if(nombre===null) return;
+  try {
+    const r = await dbPost('clientes', { telefono:tel, nombre: limpio(nombre)||null });
+    toast('✓ Clienta creada'); await selClienta(r[0].id);
+  } catch(e){ toast('Error: '+e.message); }
+}
+async function crearClientaWA(usuario){
+  try {
+    const r = await dbPost('clientes', { usuario_wa: limpio(usuario), nombre: limpio(usuario) });
+    toast('✓ Clienta creada (sin celular)'); await selClienta(r[0].id);
+  } catch(e){ toast('Error: '+e.message); }
+}
+async function selClienta(id){
+  try {
+    const r = await dbGet(`clientes?id=eq.${id}&limit=1`);
+    cliente = r[0];
+    document.getElementById('r-res').innerHTML='';
+    document.getElementById('r-buscar').value='';
+    const c = cliente;
+    document.getElementById('r-sel').innerHTML = `<div class="selbox"><div class="row" style="justify-content:space-between"><strong>${esc(c.nombre||c.usuario_wa||'Sin nombre')}</strong><button class="btn btn-xs" onclick="quitarClienta()">Cambiar</button></div>
+      <div class="hint" style="margin-top:2px">${c.telefono?'📱 '+esc(c.telefono):'<span class="badge badge-warn">sin celular</span> 👤 '+esc(c.usuario_wa||'')}</div></div>`;
+    document.getElementById('r-form').style.display='';
+    await renderItemsClienta();
+    cargarProductos();
+  } catch(e){ toast('Error: '+e.message); }
+}
+function quitarClienta(){
+  cliente = null;
+  document.getElementById('r-sel').innerHTML='';
+  document.getElementById('r-form').style.display='none';
+  document.getElementById('r-buscar').focus();
+}
+
+// ═════════ PEDIDOS E ITEMS ═════════
+async function pedidoAbierto(cli){
+  const r = await dbGet(`pedidos?cliente_id=eq.${cli.id}&estado=neq.despachado&order=creado_en.desc&limit=1`);
+  return r[0] || null;
+}
+async function renderItemsClienta(){
+  const box = document.getElementById('r-items');
+  if(!cliente){ box.innerHTML=''; return; }
+  try {
+    const ped = await pedidoAbierto(cliente);
+    if(!ped){ box.innerHTML = '<div class="hint">Aún no tiene sets en su pedido.</div>'; return; }
+    const items = await dbGet(`items?pedido_id=eq.${ped.id}&order=creado_en.asc`);
+    const total = items.reduce((a,i)=>a+Number(i.precio_venta)*i.cantidad,0);
+    box.innerHTML = '<div class="card-title">Llevando ahora</div>' +
+      items.map(i=>`<div class="line"><span>${i.cantidad}× ${esc(i.producto)}${i.variante?' · '+esc(i.variante):''} <span class="badge badge-info">${esc(i.canal)}</span></span>
+        <span class="row">${soles(i.precio_venta*i.cantidad)} <button class="btn btn-xs" onclick="editarPrecio('${i.id}',${Number(i.precio_venta)})">✏️</button><button class="btn btn-xs" onclick="eliminarItem('${i.id}')">✕</button></span></div>`).join('') +
+      `<div style="text-align:right;font-weight:600;margin-top:8px">Total: ${soles(total)}</div>`;
+  } catch(e){ box.innerHTML = '<div class="hint" style="color:var(--red)">Error cargando</div>'; }
+}
+async function agregarItem(){
+  if(!cliente){ toast('Primero elige una clienta'); return; }
+  const prodTxt = limpio(document.getElementById('r-prod').value);
+  const color = limpio(document.getElementById('r-color').value);
+  const precio = parseFloat(String(document.getElementById('r-precio').value).replace(',','.'));
+  const cant = parseInt(document.getElementById('r-cant').value) || 1;
+  if(!canal){ toast('Elige el canal'); return; }
+  if(!prodTxt){ toast('Escribe el modelo'); return; }
+  if(!talla){ toast('Elige la talla S o M'); return; }
+  if(!color){ toast('Escribe el color o estampado'); return; }
+  if(isNaN(precio) || precio<0){ toast('Pon el precio'); return; }
+  // usar el nombre y color tal como ya existen en el catálogo (evita faltantes falsos)
+  const p0 = prodActual();
+  const nombre = p0 ? p0.nombre : prodTxt;
+  const colExist = coloresDe(p0).find(c=>norm(c)===norm(color));
+  const vari = variante(talla, colExist || color);
+  try {
+    let ped = await pedidoAbierto(cliente);
+    if(!ped){
+      const r = await dbPost('pedidos', { cliente_id:cliente.id, estado:'por_comprar' });
+      ped = r[0];
+    } else if(ped.estado==='comprado' || ped.estado==='listo_lima'){
+      await dbPatch(`pedidos?id=eq.${ped.id}`, { estado:'por_comprar' });
+      toast('ℹ️ El pedido volvió a "Por comprar" por el set nuevo');
+    }
+    await dbPost('items', { pedido_id:ped.id, producto:nombre, variante:vari, cantidad:cant, precio_venta:precio, canal });
+    try { await guardarProducto(nombre, vari, precio); } catch(e){ console.error(e); }
+    document.getElementById('r-prod').value='';
+    document.getElementById('r-color').value='';
+    document.getElementById('r-colores').innerHTML='';
+    document.getElementById('r-precio').value=PRECIO_SET;
+    document.getElementById('r-cant').value='1';
+    talla=''; renderTallas();
+    toast('✓ Agregado');
+    await renderItemsClienta();
+    cargarProductos();
+  } catch(e){ toast('Error: '+e.message); }
+}
+async function editarPrecio(id, actual){
+  const v = prompt('Nuevo precio por set (S/):', actual); if(v===null) return;
+  const n = parseFloat(String(v).replace(',','.'));
+  if(isNaN(n) || n<0){ toast('Precio inválido'); return; }
+  try { await dbPatch(`items?id=eq.${id}`, { precio_venta:n }); toast('✓ Precio actualizado'); renderItemsClienta(); } catch(e){ toast('Error: '+e.message); }
+}
+async function eliminarItem(id){
+  if(!confirm('¿Quitar este set del pedido?')) return;
+  try {
+    const it = await dbGet(`items?id=eq.${id}&select=pedido_id`);
+    await dbDelete(`items?id=eq.${id}`);
+    const resto = await dbGet(`items?pedido_id=eq.${it[0].pedido_id}&select=id&limit=1`);
+    if(!resto.length) await dbDelete(`pedidos?id=eq.${it[0].pedido_id}`);
+    await renderItemsClienta();
+  } catch(e){ toast('Error: '+e.message); }
+}
+
+// ═════════ CATÁLOGO ═════════
+async function loadCatalogo(){
+  const box = document.getElementById('cat-lista');
+  box.innerHTML = '<div class="hint">Cargando…</div>';
+  try {
+    const [prods, items] = await Promise.all([
+      dbGet('productos?order=nombre.asc&limit=1000'),
+      dbGet('items?select=producto,variante,cantidad&limit=10000')
+    ]);
+    productos = prods;
+    const vend = {};
+    items.forEach(i=>{ const k = clave(i.producto, i.variante); vend[k] = (vend[k]||0) + i.cantidad; });
+    if(!prods.length){ box.innerHTML = '<div class="hint">Aún no hay modelos. Se crean solos al registrar la primera venta.</div>'; return; }
+    box.innerHTML = prods.map(p=>{
+      const vars = (Array.isArray(p.variantes)?p.variantes:[]).slice().sort();
+      const tot = vars.reduce((a,v)=>a+(vend[clave(p.nombre,v)]||0),0);
+      return `<div class="line"><div style="flex:1;min-width:0"><strong>${esc(p.nombre)}</strong> · ${soles(p.precio_venta)} <span class="hint">· ${tot} vendidos</span>
+        ${vars.map(v=>`<div class="hint" style="margin-top:2px">${esc(v)} → ${vend[clave(p.nombre,v)]||0}</div>`).join('')}</div>
+        <div class="row"><button class="btn btn-xs" onclick="editarProducto('${p.id}')">✏️</button><button class="btn btn-xs" onclick="borrarProducto('${p.id}')">🗑</button></div></div>`;
+    }).join('');
+  } catch(e){ box.innerHTML = '<div class="hint" style="color:var(--red)">Error cargando</div>'; }
+}
+async function editarProducto(id){
+  const p = productos.find(x=>x.id===id); if(!p) return;
+  const nombre = prompt('Nombre del modelo:', p.nombre); if(nombre===null) return;
+  const precio = prompt('Precio por set S/:', p.precio_venta); if(precio===null) return;
+  const nuevo = limpio(nombre) || p.nombre;
+  const pr = parseFloat(String(precio).replace(',','.'));
+  if(isNaN(pr) || pr<0){ toast('Precio inválido'); return; }
+  if(norm(nuevo)!==norm(p.nombre) && productos.some(x=>x.id!==id && norm(x.nombre)===norm(nuevo))){ toast('Ya existe un modelo con ese nombre'); return; }
+  try {
+    await dbPatch(`productos?id=eq.${id}`, { nombre:nuevo, precio_venta:pr });
+    // si cambió el nombre, se actualiza también en las ventas para que el cruce siga coincidiendo
+    if(nuevo!==p.nombre) await dbPatch(`items?producto=eq.${encodeURIComponent(p.nombre)}`, { producto:nuevo });
+    toast('✓ Modelo actualizado'); loadCatalogo();
+  } catch(e){ toast('Error: '+e.message); }
+}
+async function borrarProducto(id){
+  const p = productos.find(x=>x.id===id); if(!p) return;
+  if(!confirm(`¿Borrar "${p.nombre}" del catálogo? Las ventas registradas no se tocan.`)) return;
+  try { await dbDelete(`productos?id=eq.${id}`); toast('✓ Borrado'); loadCatalogo(); } catch(e){ toast('Error: '+e.message); }
+}
+
+// ═════════ CLIENTAS (lista) ═════════
+let clientas = [];
+async function loadClientas(){
+  const box = document.getElementById('cl-lista');
+  box.innerHTML = '<div class="hint">Cargando…</div>';
+  try {
+    const [cs, peds, items] = await Promise.all([
+      dbGet('clientes?order=creado_en.desc&limit=5000'),
+      dbGet('pedidos?select=id,cliente_id&limit=10000'),
+      dbGet('items?select=pedido_id,cantidad,precio_venta&limit=20000')
+    ]);
+    const pedCli = {}; peds.forEach(p=>pedCli[p.id]=p.cliente_id);
+    const tot = {}, sets = {};
+    items.forEach(i=>{ const c = pedCli[i.pedido_id]; if(!c) return; tot[c]=(tot[c]||0)+Number(i.precio_venta)*i.cantidad; sets[c]=(sets[c]||0)+i.cantidad; });
+    clientas = cs.map(c=>({ ...c, total:tot[c.id]||0, sets:sets[c.id]||0 }));
+    filtrarClientas(document.getElementById('cl-buscar').value);
+  } catch(e){ box.innerHTML = '<div class="hint" style="color:var(--red)">Error cargando</div>'; }
+}
+function filtrarClientas(v){
+  const toks = norm(v).split(' ').filter(Boolean).map(t=>/^[\d+\-]+$/.test(t)?normTel(t):t);
+  const lista = clientas.filter(c=>{ const q = norm([c.nombre,c.usuario_wa,c.telefono].join(' ')); return toks.every(t=>q.includes(t)); });
+  const box = document.getElementById('cl-lista');
+  if(!lista.length){ box.innerHTML = '<div class="hint">'+(clientas.length?'Sin resultados':'Aún no hay clientas')+'</div>'; return; }
+  box.innerHTML = `<div class="hint mb8">${lista.length} clienta(s)</div>` + lista.map(c=>`<div class="line"><div><strong>${esc(c.nombre||'Sin nombre')}</strong>
+    <div class="hint">${c.telefono?'📱 '+esc(c.telefono):'<span class="badge badge-warn">sin celular</span>'}${c.usuario_wa?' · 👤 '+esc(c.usuario_wa):''}</div>
+    <div class="hint">${c.sets} set(s) · ${soles(c.total)}</div></div>
+    <button class="btn btn-xs" onclick="editarClienta('${c.id}')">✏️ Editar</button></div>`).join('');
+}
+async function editarClienta(id){
+  const c = clientas.find(x=>x.id===id); if(!c) return;
+  const nombre = prompt('Nombre:', c.nombre||''); if(nombre===null) return;
+  const telIn = prompt('Celular (9 dígitos, vacío si no tiene):', c.telefono||''); if(telIn===null) return;
+  const usuario = prompt('Usuario de WhatsApp (opcional):', c.usuario_wa||''); if(usuario===null) return;
+  const tel = normTel(telIn);
+  if(tel && tel.length!==9){ toast('El celular debe tener 9 dígitos'); return; }
+  if(!tel && !limpio(usuario)){ toast('Debe tener celular o usuario de WhatsApp'); return; }
+  try {
+    if(tel && tel!==c.telefono){
+      const ya = await dbGet(`clientes?telefono=eq.${tel}&id=neq.${id}&limit=1`);
+      if(ya.length){ toast('Ese celular ya es de '+(ya[0].nombre||'otra clienta')); return; }
+    }
+    await dbPatch(`clientes?id=eq.${id}`, { nombre:limpio(nombre)||null, telefono:tel||null, usuario_wa:limpio(usuario)||null });
+    toast('✓ Clienta actualizada'); loadClientas();
+  } catch(e){ toast('Error: '+e.message); }
+}
+
+// ═════════ INICIO ═════════
+(function(){
+  let u = null;
+  try { u = localStorage.getItem('caipi_user'); } catch(e){}
+  if(u && USERS[u]) entrar(u);
+})();
+</script>
+</body>
+</html>
