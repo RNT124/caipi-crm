@@ -119,6 +119,7 @@ button{font:inherit;cursor:pointer}
     <div class="tab active" id="tab-registro" onclick="irTab('registro')">🔴 Registro</div>
     <div class="tab" id="tab-comprar" onclick="irTab('comprar')">🛒 Por comprar</div>
     <div class="tab" id="tab-compras" onclick="irTab('compras')">🧾 Compras</div>
+    <div class="tab" id="tab-recibir" onclick="irTab('recibir')">📥 Recibir</div>
     <div class="tab" id="tab-pedidos" onclick="irTab('pedidos')">📦 Pedidos</div>
     <div class="tab" id="tab-armado" onclick="irTab('armado')">🧰 Armado Lima</div>
     <div class="tab" id="tab-envios" onclick="irTab('envios')">🚚 Envíos</div>
@@ -180,6 +181,24 @@ button{font:inherit;cursor:pointer}
       </div>
       <input id="c-buscar" type="text" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="🔍 Buscar compra por modelo, color o fecha" oninput="filtrar('view-compras', this.value)" class="mb8">
       <div id="c-lista"></div>
+    </div>
+
+    <!-- RECIBIR MERCADERÍA -->
+    <div class="view" id="view-recibir">
+      <div class="card">
+        <div class="card-title">📥 Anotar lo que llegó a Lima</div>
+        <input id="l-fecha" type="date" class="mb8">
+        <input id="l-prod" list="r-prod-list" placeholder="Modelo" oninput="llProdCambio()" onchange="llProdCambio()" autocomplete="off" class="mb8">
+        <div class="row mb8" id="l-tallas"></div>
+        <div id="l-colores" class="pill-row mb8"></div>
+        <input id="l-color" placeholder="Color / estampado" class="mb8" autocomplete="off">
+        <input id="l-cant" type="number" inputmode="numeric" min="1" placeholder="Cantidad que llegó" class="mb8">
+        <button class="btn btn-block mb8" onclick="agregarLineaLlegada()">+ Agregar línea</button>
+        <div id="l-lineas" class="mb8"></div>
+        <button class="btn btn-primary btn-block" onclick="guardarLlegada()">💾 Guardar y repartir</button>
+      </div>
+      <div id="l-resultado"></div>
+      <div id="l-lista"></div>
     </div>
 
     <!-- PEDIDOS -->
@@ -358,7 +377,7 @@ function doLogout(){
 }
 
 // ═════════ NAVEGACIÓN ═════════
-const TABS = ['registro','comprar','compras','pedidos','armado','envios','datos','resumen','catalogo','clientas'];
+const TABS = ['registro','comprar','compras','recibir','pedidos','armado','envios','datos','resumen','catalogo','clientas'];
 function irTab(t){
   TABS.forEach(k=>{
     document.getElementById('tab-'+k).classList.toggle('active', k===t);
@@ -367,6 +386,7 @@ function irTab(t){
   if(t==='registro'){ renderCanales(); renderTallas(); cargarProductos(); }
   if(t==='comprar') loadComprar();
   if(t==='compras') loadCompras();
+  if(t==='recibir') loadRecibir();
   if(t==='pedidos') loadPedidos();
   if(t==='armado') loadArmado();
   if(t==='envios') loadEnvios();
@@ -554,6 +574,7 @@ async function agregarItem(){
     document.getElementById('r-cant').value='1';
     talla=''; renderTallas();
     toast('✓ Agregado');
+    try { await repartirLlegadas(); } catch(e){ console.error(e); }
     await sincronizarEstados();
     await renderItemsClienta();
     cargarProductos();
@@ -1155,7 +1176,7 @@ function renderArmado(){
     const c = p.cli, bloq = !!p.empacado_en;
     const todoOk = p.items.every(i=>i.en_mano===true), hayNo = p.items.some(i=>i.en_mano===false);
     const badge = bloq ? '<span class="badge badge-ok">📦 Empacado</span>' : todoOk ? '<span class="badge badge-ok">🟢 Listo</span>' : hayNo ? '<span class="badge badge-warn">🔴 Incompleto</span>' : '<span class="badge">⚪ Por revisar</span>';
-    const filas = p.items.map(i=>`<div class="row" style="padding:6px 0;border-top:1px solid var(--border)"><div style="flex:1;font-size:13px">${i.cantidad}× ${esc(i.producto)} · ${esc(i.variante||'')}</div>
+    const filas = p.items.map(i=>`<div class="row" style="padding:6px 0;border-top:1px solid var(--border)"><div style="flex:1;font-size:13px">${i.cantidad}× ${esc(i.producto)} · ${esc(i.variante||'')}${i.en_mano!==true && i.recibido>0 ? ` <span class="badge badge-info">📥 llegó ${Math.min(i.recibido,i.cantidad)}/${i.cantidad}</span>` : ''}</div>
       ${bloq?'':`<button class="btn btn-xs ${i.en_mano===true?'btn-primary':''}" onclick="arSet('${i.id}',true)">✅ La tengo</button><button class="btn btn-xs ${i.en_mano===false?'btn-no':''}" onclick="arSet('${i.id}',false)">❌ No</button>`}</div>`).join('');
     let acc = '';
     if(bloq) acc = `<button class="btn btn-xs" onclick="arDeshacer('${p.id}')">↩ Deshacer</button>`;
@@ -1256,6 +1277,136 @@ function renderEnvios(){
 }
 function enSel(){ return [...document.querySelectorAll('.en-sel:checked')].map(x=>x.value); }
 function enSelTodos(t){ document.querySelectorAll('.en-sel').forEach(x=>{ x.checked = !!t && x.dataset.t===t; }); }
+
+// ═════════ RECIBIR MERCADERÍA ═════════
+let lTalla = '', lineasLlegada = [], llegadas = [];
+function setLTalla(t){ lTalla = t; renderLTallas(); }
+function renderLTallas(){
+  document.getElementById('l-tallas').innerHTML = '<span class="hint" style="margin-right:4px">Talla</span>' +
+    TALLAS.map(t=>`<button type="button" class="btn talla-btn ${t===lTalla?'btn-primary':''}" onclick="setLTalla('${t}')">${t}</button>`).join('');
+}
+function lProdActual(){ const n = norm(document.getElementById('l-prod').value); return n ? (productos.find(p=>norm(p.nombre)===n)||null) : null; }
+function llProdCambio(){
+  const p = lProdActual(), box = document.getElementById('l-colores');
+  box.innerHTML = p ? coloresDe(p).map(c=>`<button type="button" class="btn btn-xs" data-c="${esc(c)}" onclick="document.getElementById('l-color').value=this.dataset.c">${esc(c)}</button>`).join('') : '';
+}
+function agregarLineaLlegada(){
+  const prodTxt = limpio(document.getElementById('l-prod').value);
+  const color = limpio(document.getElementById('l-color').value);
+  const cant = parseInt(document.getElementById('l-cant').value);
+  if(!prodTxt){ toast('Escribe el modelo'); return false; }
+  if(!lTalla){ toast('Elige la talla S o M'); return false; }
+  if(!color){ toast('Escribe el color o estampado'); return false; }
+  if(!cant || cant<1){ toast('Pon la cantidad'); return false; }
+  const p0 = lProdActual();
+  if(!p0 && !confirm(`"${prodTxt}" no está en tu catálogo. ¿Anotarlo igual?`)) return false;
+  const colExist = coloresDe(p0).find(c=>norm(c)===norm(color));
+  lineasLlegada.push({ producto: p0 ? p0.nombre : prodTxt, variante: variante(lTalla, colExist||color), cantidad: cant });
+  ['l-prod','l-color','l-cant'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('l-colores').innerHTML=''; lTalla=''; renderLTallas(); renderLineasLlegada();
+  return true;
+}
+function quitarLineaLlegada(n){ lineasLlegada.splice(n,1); renderLineasLlegada(); }
+function renderLineasLlegada(){
+  document.getElementById('l-lineas').innerHTML = lineasLlegada.map((l,n)=>`<div class="line"><span>${l.cantidad}× ${esc(l.producto)} · ${esc(l.variante)}</span><button class="btn btn-xs" onclick="quitarLineaLlegada(${n})">✕</button></div>`).join('');
+}
+// Reparte lo llegado (aún sin asignar) a los sets más antiguos que esperan.
+// Solo marca "en mano" los pedidos que quedan completos.
+async function repartirLlegadas(){
+  const [lls, items, peds] = await Promise.all([
+    dbGet('llegadas?select=producto,variante,cantidad&limit=20000'),
+    dbGet('items?select=id,pedido_id,producto,variante,cantidad,en_mano,recibido,creado_en&order=creado_en.asc&limit=20000'),
+    dbGet('pedidos?select=id,estado,empacado_en,cliente_id&limit=10000')
+  ]);
+  const pedDe = {}; peds.forEach(p=>pedDe[p.id] = p);
+  const pool = {};
+  lls.forEach(l=>{ const k = clave(l.producto,l.variante); pool[k] = (pool[k]||0) + l.cantidad; });
+  items.forEach(i=>{ const k = clave(i.producto,i.variante); pool[k] = (pool[k]||0) - (i.recibido||0); });
+  const cambiosRec = {};
+  items.forEach(i=>{
+    const p = pedDe[i.pedido_id];
+    if(!p || p.estado==='despachado' || i.en_mano===true) return;
+    const k = clave(i.producto,i.variante), falta = i.cantidad - (i.recibido||0);
+    if(falta<=0 || !(pool[k]>0)) return;
+    const t = Math.min(pool[k], falta);
+    pool[k] -= t; i.recibido = (i.recibido||0) + t; cambiosRec[i.id] = i.recibido;
+  });
+  await Promise.all(Object.entries(cambiosRec).map(([id,r])=>dbPatch(`items?id=eq.${id}`, { recibido:r })));
+  // pedidos que quedan completos -> en mano
+  const porPed = {}; items.forEach(i=>{ (porPed[i.pedido_id] = porPed[i.pedido_id]||[]).push(i); });
+  const completos = [], parciales = [], marcar = [];
+  Object.entries(porPed).forEach(([pid, its])=>{
+    const p = pedDe[pid];
+    if(!p || p.estado==='despachado' || p.empacado_en) return;
+    const pendientes = its.filter(i=>i.en_mano!==true);
+    if(!pendientes.length) return;
+    const ok = pendientes.every(i=>(i.recibido||0)>=i.cantidad);
+    if(ok){ completos.push(p); pendientes.forEach(i=>{ marcar.push(i.id); i.en_mano = true; }); }
+    else if(pendientes.some(i=>(i.recibido||0)>0)) parciales.push(p);
+  });
+  if(marcar.length) await dbPatch(`items?id=in.(${marcar.join(',')})`, { en_mano:true });
+  const sobra = {};
+  Object.entries(pool).forEach(([k,n])=>{ if(n>0) sobra[k] = n; });
+  return { completos, parciales, sobra, asignados: Object.keys(cambiosRec).length };
+}
+async function guardarLlegada(){
+  if(limpio(document.getElementById('l-prod').value)){ if(!agregarLineaLlegada()) return; }
+  if(!lineasLlegada.length){ toast('Agrega al menos una línea'); return; }
+  const fecha = document.getElementById('l-fecha').value || fechaHoy();
+  try {
+    await dbPost('llegadas', lineasLlegada.map(l=>({ fecha, ...l })));
+    lineasLlegada = []; renderLineasLlegada();
+    const r = await repartirLlegadas();
+    const clis = await dbGet('clientes?select=id,nombre,usuario_wa&limit=10000');
+    const nom = p=>nombreCli(clis.find(c=>c.id===p.cliente_id));
+    document.getElementById('l-resultado').innerHTML = `<div class="card" style="border-color:var(--green)"><div class="card-title">Resultado del reparto</div>
+      <div style="font-size:14px">✅ <strong>${r.completos.length}</strong> pedido(s) completos → pasaron a "Todo en mano"</div>
+      ${r.completos.length?`<div class="hint">${r.completos.map(p=>esc(nom(p))).join(', ')}</div>`:''}
+      <div style="font-size:14px;margin-top:6px">⏳ <strong>${r.parciales.length}</strong> pedido(s) recibieron una parte y siguen esperando</div>
+      ${r.parciales.length?`<div class="hint">${r.parciales.map(p=>esc(nom(p))).join(', ')}</div>`:''}
+      <button class="btn btn-sm btn-primary mt8" onclick="irTab('armado')">🧰 Ir a Armado Lima</button></div>`;
+    toast('✓ Llegada guardada');
+    loadRecibir(true);
+  } catch(e){ toast('Error: '+e.message); }
+}
+async function loadRecibir(mantenerResultado){
+  renderLTallas();
+  if(!document.getElementById('l-fecha').value) document.getElementById('l-fecha').value = fechaHoy();
+  if(!mantenerResultado) document.getElementById('l-resultado').innerHTML = '';
+  const box = document.getElementById('l-lista');
+  box.innerHTML = '<div class="hint">Cargando…</div>';
+  try {
+    await cargarProductos();
+    const r = await repartirLlegadas();   // asigna lo sobrante a ventas nuevas, si las hay
+    llegadas = await dbGet('llegadas?order=fecha.desc,creado_en.desc&limit=5000');
+    const nombres = {}; llegadas.forEach(l=>{ nombres[clave(l.producto,l.variante)] = l.producto+' · '+(l.variante||''); });
+    const sob = Object.entries(r.sobra);
+    const sobHtml = `<div class="card"><div class="card-title">📦 Llegó sin clienta (${sob.reduce((a,[k,n])=>a+n,0)})</div>` +
+      (sob.length ? sob.map(([k,n])=>`<div class="line"><span>${esc(nombres[k]||k)}</span><span class="sobra">${n}</span></div>`).join('') + '<div class="hint mt8">Se asigna sola a la próxima venta de ese set.</div>' : '<div class="hint">Todo lo que llegó ya tiene clienta.</div>') + '</div>';
+    const porDia = {}; llegadas.forEach(l=>{ (porDia[l.fecha] = porDia[l.fecha]||[]).push(l); });
+    const hist = Object.keys(porDia).sort().reverse().map(f=>`<div class="card"><div class="line" style="font-weight:600"><span>📅 ${fechaCorta(f)} · llegó</span><span>${porDia[f].reduce((a,l)=>a+l.cantidad,0)} set(s)</span></div>
+      ${porDia[f].map(l=>`<div class="line"><span>${l.cantidad}× ${esc(l.producto)} · ${esc(l.variante||'')}</span><button class="btn btn-xs" onclick="borrarLlegada('${l.id}')">🗑</button></div>`).join('')}</div>`).join('');
+    box.innerHTML = sobHtml + (hist || '<div class="card hint" style="text-align:center">Aún no anotaste llegadas</div>');
+  } catch(e){ box.innerHTML = '<div class="hint" style="color:var(--red)">Error: '+esc(e.message)+'</div>'; }
+}
+async function borrarLlegada(id){
+  const l = llegadas.find(x=>x.id===id); if(!l) return;
+  if(!confirm(`¿Borrar la llegada ${l.cantidad}× ${l.producto} · ${l.variante||''}?\n\nOjo: los pedidos que ya pasaron a "Todo en mano" no se desmarcan solos; corrígelos en Armado Lima si hace falta.`)) return;
+  try {
+    await dbDelete(`llegadas?id=eq.${id}`);
+    // quita lo recibido de los sets más nuevos que aún no están en mano, para que cuadre
+    const k = clave(l.producto, l.variante);
+    const [lls, items] = await Promise.all([ dbGet('llegadas?select=producto,variante,cantidad&limit=20000'), dbGet('items?select=id,producto,variante,en_mano,recibido,creado_en&recibido=gt.0&order=creado_en.desc&limit=20000') ]);
+    let exceso = items.filter(i=>clave(i.producto,i.variante)===k).reduce((a,i)=>a+i.recibido,0) - lls.filter(x=>clave(x.producto,x.variante)===k).reduce((a,x)=>a+x.cantidad,0);
+    for(const i of items){
+      if(exceso<=0) break;
+      if(clave(i.producto,i.variante)!==k || i.en_mano===true) continue;
+      const t = Math.min(exceso, i.recibido); exceso -= t;
+      await dbPatch(`items?id=eq.${i.id}`, { recibido: i.recibido - t });
+    }
+    toast('✓ Llegada borrada'); loadRecibir();
+  } catch(e){ toast('Error: '+e.message); }
+}
 
 // ═════════ RESUMEN Y GASTOS ═════════
 const TIPOS_GASTO = ['Envío Brasil→Lima','Impuestos / aduana','Flete local','Otro'];
